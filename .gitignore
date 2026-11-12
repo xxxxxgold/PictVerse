@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+.vite/
+data/
+*.log
+*.tsbuildinfo
+.env
+.env.*
+dist-web/
+dist-server/

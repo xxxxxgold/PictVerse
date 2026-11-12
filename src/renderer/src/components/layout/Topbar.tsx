@@ -1,0 +1,49 @@
+import type { JSX } from 'react'
+import { BookOpen, Image as ImageIcon, PanelRightClose, PanelRightOpen, PencilLine, Plus } from 'lucide-react'
+import { useAppStore } from '@renderer/store/app-store'
+import logoUrl from '@renderer/assets/icon.png'
+
+export function Topbar(): JSX.Element {
+  const { settings, settingsVisible, view, setView, toggleSettings, createConversation } = useAppStore()
+  const endpoint = `${settings?.baseURL || 'https://api.openai.com'}/v1/images/generations`
+
+  return (
+    <header className="topbar">
+      <div className="brand">
+        <div className="logo">
+          <img src={logoUrl} alt="绘世" />
+        </div>
+        <div>
+          <h1>绘世</h1>
+        </div>
+      </div>
+      <div className="endpoint">
+        <span className={settings?.apiKeyStored ? 'dot good' : 'dot warn'} />
+        <span>{settings?.apiKeyStored ? '接口已配置' : '等待配置 API Key'}</span>
+        <code>{endpoint}</code>
+      </div>
+      <div className="top-actions">
+        <button onClick={toggleSettings} title={settingsVisible ? '隐藏设置区' : '显示设置区'}>
+          {settingsVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          设置
+        </button>
+        <button className={view === 'workspace' ? 'active-soft' : ''} onClick={() => setView('workspace')}>
+          <PencilLine size={16} />
+          工作台
+        </button>
+        <button className={view === 'gallery' ? 'active-soft' : ''} onClick={() => setView('gallery')}>
+          <ImageIcon size={16} />
+          图库
+        </button>
+        <button className={view === 'prompts' ? 'active-soft' : ''} onClick={() => setView('prompts')}>
+          <BookOpen size={16} />
+          提示词库
+        </button>
+        <button className="primary" onClick={() => void createConversation()}>
+          <Plus size={16} />
+          新建会话
+        </button>
+      </div>
+    </header>
+  )
+}

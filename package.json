@@ -1,0 +1,124 @@
+{
+  "name": "pictverse",
+  "version": "1.1.2",
+  "description": "PictVerse (绘世) desktop image generation workbench.",
+  "main": "./out/main/index.js",
+  "author": "xxxxxgold",
+  "homepage": "https://github.com/xxxxxgold/PictVerse",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xxxxxgold/PictVerse.git"
+  },
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "predev": "node scripts/rebuild-native.mjs",
+    "dev": "electron-vite dev",
+    "dev:web": "vite --config src/web/vite.config.ts",
+    "dev:server": "tsx src/server/index.ts",
+    "build": "tsc --noEmit && electron-vite build",
+    "build:web": "vite build --config src/web/vite.config.ts",
+    "build:server": "tsc -p tsconfig.server.json",
+    "preview": "electron-vite preview",
+    "test": "vitest run",
+    "dist": "pnpm build && electron-builder",
+    "docker:build": "docker build -t pictverse-web .",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.3.0",
+    "better-sqlite3": "^11.10.0",
+    "clsx": "^2.1.1",
+    "fastify": "^5.6.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.pictverse.desktop",
+    "productName": "PictVerse",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "src/renderer/src/assets/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "src/renderer/src/assets/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "icon": "src/renderer/src/assets/icon.ico",
+      "artifactName": "${productName} Setup ${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "src/renderer/src/assets/icon.png",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "category": "public.app-category.graphics-design",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
+}
