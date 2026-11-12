@@ -6,15 +6,17 @@
 
 ## 界面截图
 
-> 截图待补充。新截图放到 `docs/screenshots/` 目录下，命名为 `console.png`、`preview.png`、`gallery.png`，然后去掉下面注释块的首尾符号即可显示。
+### 控制台
 
-<!--
 ![控制台界面](docs/screenshots/console.png)
 
-![预览界面](docs/screenshots/preview.png)
+### 预览
 
-![图库界面](docs/screenshots/gallery.png)
--->
+> 待补充。
+
+### 图库
+
+> 待补充。
 
 ## 功能特性
 
