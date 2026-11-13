@@ -20,6 +20,7 @@
     "build:server": "tsc -p tsconfig.server.json",
     "preview": "electron-vite preview",
     "test": "vitest run",
+    "test:native": "node scripts/run-native-tests.mjs",
     "dist": "pnpm build && electron-builder",
     "docker:build": "docker build -t pictverse-web .",
     "postinstall": "electron-builder install-app-deps"

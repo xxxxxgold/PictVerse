@@ -51,7 +51,10 @@ describe('capability migration', () => {
       probe.close()
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      console.warn(`[capability-migration] 跳过：原生模块不可用 —— ${reason.split('\n')[0]}`)
+      // 只打首行会丢掉真正的 ABI 说明（首行通常只是 .node 路径），这里保留前两行。
+      const detail = reason.split('\n').slice(0, 2).join(' ')
+      console.warn(`[capability-migration] 跳过：原生模块不可用 —— ${detail}`)
+      console.warn('[capability-migration] 提示：用 `pnpm test:native`（Electron 的 Node）可真正覆盖本用例')
       ctx.skip()
       return
     }
