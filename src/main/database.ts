@@ -2,8 +2,9 @@ import { copyFileSync, existsSync, mkdirSync, statSync, unlinkSync, writeFileSyn
 import { basename, extname, join, resolve } from 'node:path'
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize } from '@shared/image-options'
+import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, normalizeCapabilityOverride } from '@shared/image-options'
 import type {
+  CapabilityOverride,
   ConversationCreateInput,
   Conversation,
   ConversationUpdate,
@@ -13,9 +14,13 @@ import type {
   ImageHistoryItem,
   ImageRatio,
   ImageStatus,
+  Provider,
+  ProviderInput,
+  ProviderModel,
   ReferenceImage
 } from '@shared/types'
 import { createInterruptedRunRecoveryPlan } from './interrupted-run-recovery'
+import { isPathInside } from './path-guard'
 
 type Row = Record<string, unknown>
 
@@ -32,6 +37,8 @@ const referenceMimeTypes = new Map([
 export class AppDatabase {
   readonly imagesDir: string
   readonly referenceImagesDir: string
+  /** 用户配置的额外图片根目录（imagesRoot），删除守卫需要覆盖它 */
+  private extraImageRoot: string | null = null
   private readonly db: Database.Database
 
   constructor(userDataDir: string) {
@@ -70,6 +77,7 @@ export class AppDatabase {
       size: input.size || getDefaultImageSize(ratio),
       quality: input.quality || 'high',
       n: input.n !== undefined ? Math.min(10, Math.max(1, input.n)) : 1,
+      providerId: input.providerId ?? null,
       outputFormat: input.outputFormat || DEFAULT_IMAGE_OUTPUT_FORMAT,
       outputCompression: input.outputCompression ?? null,
       background: input.background || 'auto',
@@ -77,6 +85,11 @@ export class AppDatabase {
       stream: input.stream || false,
       partialImages: input.partialImages ?? 0,
       inputFidelity: input.inputFidelity ?? null,
+      complexity: input.complexity ?? null,
+      frameCount: input.frameCount ?? null,
+      frameDurationMs: input.frameDurationMs ?? null,
+      seed: input.seed ?? null,
+      seedLocked: input.seedLocked ?? false,
       autoSaveHistory: input.autoSaveHistory ?? true,
       keepFailureDetails: input.keepFailureDetails ?? true,
       referenceImages: [],
@@ -86,13 +99,14 @@ export class AppDatabase {
     this.db
       .prepare(
         `insert into conversations
-        (id, title, draft_prompt, model, ratio, size, quality, n, output_format, output_compression, background, moderation, stream, partial_images, input_fidelity, auto_save_history, keep_failure_details, created_at, updated_at)
-        values (@id, @title, @draftPrompt, @model, @ratio, @size, @quality, @n, @outputFormat, @outputCompression, @background, @moderation, @stream, @partialImages, @inputFidelity, @autoSaveHistory, @keepFailureDetails, @createdAt, @updatedAt)`
+        (id, title, draft_prompt, model, provider_id, ratio, size, quality, n, output_format, output_compression, background, moderation, stream, partial_images, input_fidelity, complexity, frame_count, frame_duration_ms, seed, seed_locked, auto_save_history, keep_failure_details, created_at, updated_at)
+        values (@id, @title, @draftPrompt, @model, @providerId, @ratio, @size, @quality, @n, @outputFormat, @outputCompression, @background, @moderation, @stream, @partialImages, @inputFidelity, @complexity, @frameCount, @frameDurationMs, @seed, @seedLocked, @autoSaveHistory, @keepFailureDetails, @createdAt, @updatedAt)`
       )
       .run({
         ...conversation,
         outputCompression: conversation.outputCompression,
         stream: conversation.stream ? 1 : 0,
+        seedLocked: conversation.seedLocked ? 1 : 0,
         autoSaveHistory: conversation.autoSaveHistory ? 1 : 0,
         keepFailureDetails: conversation.keepFailureDetails ? 1 : 0
       })
@@ -114,6 +128,12 @@ export class AppDatabase {
       stream: input.stream !== undefined ? input.stream : current.stream,
       partialImages: input.partialImages !== undefined ? input.partialImages : current.partialImages,
       inputFidelity: input.inputFidelity !== undefined ? input.inputFidelity : current.inputFidelity,
+      providerId: input.providerId !== undefined ? input.providerId : current.providerId,
+      complexity: input.complexity !== undefined ? input.complexity : current.complexity,
+      frameCount: input.frameCount !== undefined ? input.frameCount : current.frameCount,
+      frameDurationMs: input.frameDurationMs !== undefined ? input.frameDurationMs : current.frameDurationMs,
+      seed: input.seed !== undefined ? input.seed : current.seed,
+      seedLocked: input.seedLocked !== undefined ? input.seedLocked : current.seedLocked,
       updatedAt: new Date().toISOString()
     }
     this.db
@@ -133,6 +153,12 @@ export class AppDatabase {
         stream = @stream,
         partial_images = @partialImages,
         input_fidelity = @inputFidelity,
+        provider_id = @providerId,
+        complexity = @complexity,
+        frame_count = @frameCount,
+        frame_duration_ms = @frameDurationMs,
+        seed = @seed,
+        seed_locked = @seedLocked,
         auto_save_history = @autoSaveHistory,
         keep_failure_details = @keepFailureDetails,
         updated_at = @updatedAt
@@ -141,6 +167,7 @@ export class AppDatabase {
       .run({
         ...next,
         stream: next.stream ? 1 : 0,
+        seedLocked: next.seedLocked ? 1 : 0,
         autoSaveHistory: next.autoSaveHistory ? 1 : 0,
         keepFailureDetails: next.keepFailureDetails ? 1 : 0
       })
@@ -512,6 +539,70 @@ export class AppDatabase {
     if (!runColumns.some((column) => column.name === 'generation_mode')) {
       this.db.exec("alter table generation_runs add column generation_mode text not null default 'text-to-image'")
     }
+
+    // ===== 供应商 =====
+    this.db.exec(`
+      create table if not exists providers (
+        id text primary key,
+        name text not null,
+        base_url text not null,
+        api_key text,
+        default_model text not null,
+        prompt_model text,
+        supports_mask integer not null default 1,
+        supports_gif integer not null default 0,
+        supports_svg integer not null default 0,
+        capability_mask text not null default 'auto',
+        capability_gif text not null default 'auto',
+        capability_svg text not null default 'auto',
+        pricing_mode text not null default 'unified',
+        price_unified real,
+        price_1k real,
+        price_2k real,
+        price_4k real,
+        rate_text_input real,
+        rate_image_input real,
+        rate_image_output real,
+        is_default integer not null default 0,
+        position integer not null default 0,
+        created_at text not null,
+        updated_at text not null
+      );
+
+      create table if not exists provider_models (
+        provider_id text not null,
+        model_id text not null,
+        added integer not null default 1,
+        position integer not null default 0,
+        primary key (provider_id, model_id)
+      );
+    `)
+
+    // 2.5 / 2.6 参数列
+    const addColumn = (table: string, column: string, ddl: string) => {
+      const cols = this.db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>
+      if (!cols.some((c) => c.name === column)) {
+        this.db.exec(`alter table ${table} add column ${ddl}`)
+      }
+    }
+    addColumn('conversations', 'complexity', 'complexity text')
+    addColumn('conversations', 'frame_count', 'frame_count integer')
+    addColumn('conversations', 'frame_duration_ms', 'frame_duration_ms integer')
+    addColumn('conversations', 'seed', 'seed integer')
+    addColumn('conversations', 'seed_locked', 'seed_locked integer not null default 0')
+    addColumn('conversations', 'provider_id', 'provider_id text')
+    addColumn('providers', 'capability_mask', "capability_mask text not null default 'auto'")
+    addColumn('providers', 'capability_gif', "capability_gif text not null default 'auto'")
+    addColumn('providers', 'capability_svg', "capability_svg text not null default 'auto'")
+    addColumn('generation_runs', 'complexity', 'complexity text')
+    addColumn('generation_runs', 'frame_count', 'frame_count integer')
+    addColumn('generation_runs', 'frame_duration_ms', 'frame_duration_ms integer')
+    addColumn('generation_runs', 'seed', 'seed integer')
+    addColumn('generation_runs', 'provider_id', 'provider_id text')
+    addColumn('image_history', 'complexity', 'complexity text')
+    addColumn('image_history', 'seed', 'seed integer')
+    addColumn('image_history', 'provider_id', 'provider_id text')
+    addColumn('image_history', 'cost_estimate', 'cost_estimate real')
   }
 
   private conversationFromRow(row: Row): Conversation {
@@ -531,6 +622,12 @@ export class AppDatabase {
       stream: Boolean(row.stream),
       partialImages: row.partial_images != null ? Number(row.partial_images) : 0,
       inputFidelity: row.input_fidelity === 'high' || row.input_fidelity === 'low' ? row.input_fidelity : null,
+      providerId: row.provider_id ? String(row.provider_id) : null,
+      complexity: row.complexity === 'low' || row.complexity === 'medium' || row.complexity === 'high' ? row.complexity : null,
+      frameCount: typeof row.frame_count === 'number' ? row.frame_count : null,
+      frameDurationMs: typeof row.frame_duration_ms === 'number' ? row.frame_duration_ms : null,
+      seed: typeof row.seed === 'number' ? row.seed : null,
+      seedLocked: Boolean(row.seed_locked),
       autoSaveHistory: Boolean(row.auto_save_history),
       keepFailureDetails: Boolean(row.keep_failure_details),
       referenceImages: this.listConversationReferences(String(row.id)),
@@ -699,10 +796,19 @@ export class AppDatabase {
     }
   }
 
+  /** 注册用户配置的图片根目录（空/null = 清除）；供删除守卫识别自定义位置 */
+  setExtraImageRoot(root: string | null): void {
+    this.extraImageRoot = root && root.trim() ? resolve(root.trim()) : null
+  }
+
   private deleteImageFile(filePath: string): void {
     const resolved = resolve(filePath)
     const imagesRoot = resolve(this.imagesDir)
-    if (resolved.startsWith(imagesRoot) && existsSync(resolved)) unlinkSync(resolved)
+    const roots = [imagesRoot]
+    if (this.extraImageRoot) roots.push(this.extraImageRoot)
+    if (roots.some((root) => isPathInside(root, resolved)) && existsSync(resolved)) {
+      unlinkSync(resolved)
+    }
   }
 
   private getImageFileSize(filePath: unknown): number | null {
@@ -716,8 +822,196 @@ export class AppDatabase {
       return null
     }
   }
+
+  // ===== 供应商 =====
+
+  listProviders(): Provider[] {
+    const rows = this.db.prepare('select * from providers order by position asc, created_at asc').all() as ProviderRow[]
+    return rows.map((row) => this.providerFromRow(row))
+  }
+
+  createProvider(input: ProviderInput): Provider {
+    const now = new Date().toISOString()
+    const existing = this.listProviders()
+    const provider: Provider = {
+      id: randomUUID(),
+      name: input.name?.trim() || '未命名供应商',
+      baseURL: input.baseURL?.trim() || '',
+      apiKey: input.apiKey ?? null,
+      defaultModel: input.defaultModel?.trim() || DEFAULT_MODEL,
+      promptModel: input.promptModel ?? null,
+      supportsMask: input.supportsMask ?? true,
+      supportsGif: input.supportsGif ?? false,
+      supportsSvg: input.supportsSvg ?? false,
+      capabilityMask: input.capabilityMask ?? 'auto',
+      capabilityGif: input.capabilityGif ?? 'auto',
+      capabilitySvg: input.capabilitySvg ?? 'auto',
+      pricingMode: input.pricingMode ?? 'unified',
+      priceUnified: input.priceUnified ?? null,
+      price1K: input.price1K ?? null,
+      price2K: input.price2K ?? null,
+      price4K: input.price4K ?? null,
+      rateTextInput: input.rateTextInput ?? null,
+      rateImageInput: input.rateImageInput ?? null,
+      rateImageOutput: input.rateImageOutput ?? null,
+      isDefault: input.isDefault ?? existing.length === 0,
+      position: existing.length,
+      createdAt: now,
+      updatedAt: now
+    }
+    this.db
+      .prepare(
+        `insert into providers
+        (id, name, base_url, api_key, default_model, prompt_model, supports_mask, supports_gif, supports_svg,
+         capability_mask, capability_gif, capability_svg,
+         pricing_mode, price_unified, price_1k, price_2k, price_4k, rate_text_input, rate_image_input,
+         rate_image_output, is_default, position, created_at, updated_at)
+        values (@id, @name, @baseURL, @apiKey, @defaultModel, @promptModel, @supportsMask, @supportsGif, @supportsSvg,
+         @capabilityMask, @capabilityGif, @capabilitySvg,
+         @pricingMode, @priceUnified, @price1K, @price2K, @price4K, @rateTextInput, @rateImageInput,
+         @rateImageOutput, @isDefault, @position, @createdAt, @updatedAt)`
+      )
+      .run({
+        ...provider,
+        supportsMask: provider.supportsMask ? 1 : 0,
+        supportsGif: provider.supportsGif ? 1 : 0,
+        supportsSvg: provider.supportsSvg ? 1 : 0,
+        isDefault: provider.isDefault ? 1 : 0
+      })
+    if (provider.isDefault) this.setDefaultProvider(provider.id)
+    return provider
+  }
+
+  updateProvider(id: string, input: ProviderInput): Provider {
+    const current = this.getProvider(id)
+    if (!current) throw new Error('Provider not found.')
+    const next: Provider = {
+      ...current,
+      ...input,
+      name: input.name?.trim() ?? current.name,
+      baseURL: input.baseURL?.trim() ?? current.baseURL,
+      defaultModel: input.defaultModel?.trim() ?? current.defaultModel,
+      updatedAt: new Date().toISOString()
+    }
+    this.db
+      .prepare(
+        `update providers set
+        name = @name, base_url = @baseURL, api_key = @apiKey, default_model = @defaultModel,
+        prompt_model = @promptModel, supports_mask = @supportsMask, supports_gif = @supportsGif,
+        supports_svg = @supportsSvg, capability_mask = @capabilityMask, capability_gif = @capabilityGif,
+        capability_svg = @capabilitySvg, pricing_mode = @pricingMode, price_unified = @priceUnified,
+        price_1k = @price1K, price_2k = @price2K, price_4k = @price4K, rate_text_input = @rateTextInput,
+        rate_image_input = @rateImageInput, rate_image_output = @rateImageOutput, is_default = @isDefault,
+        updated_at = @updatedAt
+        where id = @id`
+      )
+      .run({
+        ...next,
+        supportsMask: next.supportsMask ? 1 : 0,
+        supportsGif: next.supportsGif ? 1 : 0,
+        supportsSvg: next.supportsSvg ? 1 : 0,
+        isDefault: next.isDefault ? 1 : 0
+      })
+    if (next.isDefault) this.setDefaultProvider(next.id)
+    return next
+  }
+
+  removeProvider(id: string): void {
+    this.db.prepare('delete from provider_models where provider_id = ?').run(id)
+    this.db.prepare('delete from providers where id = ?').run(id)
+    this.db.prepare('update conversations set provider_id = null where provider_id = ?').run(id)
+  }
+
+  setDefaultProvider(id: string): Provider[] {
+    this.db.prepare('update providers set is_default = 0').run()
+    this.db.prepare('update providers set is_default = 1 where id = ?').run(id)
+    return this.listProviders()
+  }
+
+  getProvider(id: string): Provider | null {
+    const row = this.db.prepare('select * from providers where id = ?').get(id) as ProviderRow | undefined
+    return row ? this.providerFromRow(row) : null
+  }
+
+  listProviderModels(providerId: string): ProviderModel[] {
+    const rows = this.db
+      .prepare('select * from provider_models where provider_id = ? order by position asc')
+      .all(providerId) as Array<{ provider_id: string; model_id: string; added: number; position: number }>
+    return rows.map((row) => ({
+      providerId: row.provider_id,
+      modelId: row.model_id,
+      added: Boolean(row.added),
+      position: row.position
+    }))
+  }
+
+  saveProviderModels(providerId: string, modelIds: string[]): ProviderModel[] {
+    this.db.prepare('delete from provider_models where provider_id = ?').run(providerId)
+    const insert = this.db.prepare(
+      'insert into provider_models (provider_id, model_id, added, position) values (?, ?, 1, ?)'
+    )
+    modelIds.forEach((modelId, index) => insert.run(providerId, modelId, index))
+    return this.listProviderModels(providerId)
+  }
+
+  private providerFromRow(row: ProviderRow): Provider {
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      baseURL: String(row.base_url),
+      apiKey: row.api_key ? String(row.api_key) : null,
+      defaultModel: String(row.default_model),
+      promptModel: row.prompt_model ? String(row.prompt_model) : null,
+      supportsMask: Boolean(row.supports_mask),
+      supportsGif: Boolean(row.supports_gif),
+      supportsSvg: Boolean(row.supports_svg),
+      capabilityMask: normalizeCapabilityOverride(row.capability_mask),
+      capabilityGif: normalizeCapabilityOverride(row.capability_gif),
+      capabilitySvg: normalizeCapabilityOverride(row.capability_svg),
+      pricingMode: (row.pricing_mode as Provider['pricingMode']) || 'unified',
+      priceUnified: typeof row.price_unified === 'number' ? row.price_unified : null,
+      price1K: typeof row.price_1k === 'number' ? row.price_1k : null,
+      price2K: typeof row.price_2k === 'number' ? row.price_2k : null,
+      price4K: typeof row.price_4k === 'number' ? row.price_4k : null,
+      rateTextInput: typeof row.rate_text_input === 'number' ? row.rate_text_input : null,
+      rateImageInput: typeof row.rate_image_input === 'number' ? row.rate_image_input : null,
+      rateImageOutput: typeof row.rate_image_output === 'number' ? row.rate_image_output : null,
+      isDefault: Boolean(row.is_default),
+      position: typeof row.position === 'number' ? row.position : 0,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at)
+    }
+  }
 }
 
+type ProviderRow = {
+  id: string
+  name: string
+  base_url: string
+  api_key: string | null
+  default_model: string
+  prompt_model: string | null
+  supports_mask: number
+  supports_gif: number
+  supports_svg: number
+  capability_mask: string | null
+  capability_gif: string | null
+  capability_svg: string | null
+  pricing_mode: string
+  price_unified: number | null
+  price_1k: number | null
+  price_2k: number | null
+  price_4k: number | null
+  rate_text_input: number | null
+  rate_image_input: number | null
+  rate_image_output: number | null
+  is_default: number
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+/** 存储层的三态覆盖值兜底：脏数据或旧值一律按 auto 处理 */
 function normalizeReferenceMimeType(mimeType: string, name: string): string {
   const normalized = mimeType.toLowerCase()
   if (referenceMimeTypes.has(normalized)) return normalized === 'image/jpg' ? 'image/jpeg' : normalized

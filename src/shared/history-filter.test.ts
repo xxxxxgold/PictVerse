@@ -39,7 +39,7 @@ describe('history filtering', () => {
       { ...baseItem, id: 'auto', prompt: 'poster', quality: 'auto', favorite: false, createdAt: '2026-05-02T00:00:00.000Z' }
     ]
 
-    expect(filterHistoryItems(items, { query: '高' }).map((item) => item.id)).toEqual(['high'])
-    expect(filterHistoryItems(items, { query: '自动' }).map((item) => item.id)).toEqual(['auto'])
+    expect(filterHistoryItems(items, { query: 'high' }).map((item) => item.id)).toEqual(['high'])
+    expect(filterHistoryItems(items, { query: 'auto' }).map((item) => item.id)).toEqual(['auto'])
   })
 })

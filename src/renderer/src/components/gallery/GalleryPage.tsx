@@ -56,7 +56,9 @@ const qualityOrder: Record<ImageQuality, number> = {
   auto: 0,
   low: 1,
   medium: 2,
-  high: 3
+  high: 3,
+  xhigh: 4,
+  max: 5
 }
 
 function compareByTimeDesc(a: ImageHistoryItem, b: ImageHistoryItem): number {
@@ -242,6 +244,13 @@ export function GalleryPage(): JSX.Element {
 
   return (
     <section className="gallery-page">
+      <header className="page-head">
+        <div>
+          <h2>图库</h2>
+          <p>全部生成记录，支持搜索、筛选、批量操作</p>
+        </div>
+        <span className="pill tiny">{history.length} 条</span>
+      </header>
       <div className="gallery-tools">
         <div className="search-wrap">
           <Search size={16} />

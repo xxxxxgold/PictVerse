@@ -12,6 +12,12 @@ export function createMainWindowOptions(): BrowserWindowConstructorOptions {
     icon: resolveWindowIconPath(),
     backgroundColor: '#f5f8f6',
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#f5f8f6',
+      symbolColor: '#0c1613',
+      height: 40
+    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

@@ -40,6 +40,7 @@ describe('app store prompt template actions', () => {
       ratio: '3:4',
       resolution: '768x1024',
       quality: 'high',
+      model: ''
     })
 
     expect(update).toHaveBeenCalledWith(conversation.id, {
@@ -80,6 +81,7 @@ describe('app store prompt template actions', () => {
       ratio: '16:9',
       resolution: '3840x2160',
       quality: 'high',
+      model: ''
     })
 
     expect(update).toHaveBeenCalledWith(conversation.id, {
@@ -118,6 +120,7 @@ describe('app store prompt template actions', () => {
       ratio: '1:1',
       resolution: '1024x1024',
       quality: 'auto',
+      model: ''
     })
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -133,6 +136,79 @@ describe('app store prompt template actions', () => {
       quality: 'auto'
     })
     expect(useAppStore.getState().view).toBe('workspace')
+  })
+
+  it('switches the conversation model when the template pins one', async () => {
+    const conversation = createConversation({ title: '已有会话', model: 'gpt-image-2.6-sunburst' })
+    const update = vi.fn((_id: string, input: Partial<Conversation>) => Promise.resolve({ ...conversation, ...input }))
+    installPictVerseMock({
+      conversation: {
+        create: vi.fn(),
+        update
+      }
+    })
+    useAppStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+      view: 'prompts',
+      promptAssistantRunning: { inspire: false, enrich: false },
+      toast: null
+    })
+
+    await useAppStore.getState().applyPromptTemplate({
+      id: 'template-model',
+      title: '绑模型模板',
+      category: '人物肖像',
+      description: '',
+      prompt: 'portrait prompt',
+      tags: [],
+      ratio: '3:4',
+      resolution: '768x1024',
+      quality: 'high',
+      model: 'qwen-image-2.1'
+    })
+
+    expect(update).toHaveBeenCalledWith(conversation.id, {
+      draftPrompt: 'portrait prompt',
+      ratio: '3:4',
+      size: '768x1024',
+      quality: 'high',
+      model: 'qwen-image-2.1'
+    })
+  })
+
+  it('keeps the conversation model when the template follows the conversation', async () => {
+    const conversation = createConversation({ title: '已有会话', model: 'gpt-image-2.6-sunburst' })
+    const update = vi.fn((_id: string, input: Partial<Conversation>) => Promise.resolve({ ...conversation, ...input }))
+    installPictVerseMock({
+      conversation: {
+        create: vi.fn(),
+        update
+      }
+    })
+    useAppStore.setState({
+      conversations: [conversation],
+      activeConversationId: conversation.id,
+      view: 'prompts',
+      promptAssistantRunning: { inspire: false, enrich: false },
+      toast: null
+    })
+
+    await useAppStore.getState().applyPromptTemplate({
+      id: 'template-follow',
+      title: '跟随模板',
+      category: '人物肖像',
+      description: '',
+      prompt: 'follow prompt',
+      tags: [],
+      ratio: '3:4',
+      resolution: '768x1024',
+      quality: 'high',
+      model: ''
+    })
+
+    const patch = update.mock.calls[0][1] as Partial<Conversation>
+    expect(patch).not.toHaveProperty('model')
   })
 })
 
@@ -171,6 +247,12 @@ function createConversation(input: Partial<Conversation> = {}): Conversation {
     stream: false,
     partialImages: 0,
     inputFidelity: null,
+    providerId: null,
+    complexity: null,
+    frameCount: null,
+    frameDurationMs: null,
+    seed: null,
+    seedLocked: false,
     autoSaveHistory: true,
     keepFailureDetails: false,
     referenceImages: [],

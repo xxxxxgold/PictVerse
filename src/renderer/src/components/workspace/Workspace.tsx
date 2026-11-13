@@ -20,13 +20,13 @@ export function Workspace({
     <section className="workspace">
       {conversation ? (
         <>
-          <Composer conversation={conversation} generating={activeConversationGenerating} />
           <CanvasArea
             runs={runs}
             generationStartedAt={activeConversationStartedAt}
             generating={activeConversationGenerating}
             generationClockMs={generationClockMs}
           />
+          <Composer conversation={conversation} generating={activeConversationGenerating} />
         </>
       ) : (
         <div className="empty-state">暂无会话</div>

@@ -7,6 +7,7 @@ import type {
   GenerateImageInput,
   HistoryListOptions,
   PromptAssistInput,
+  ProviderInput,
   ProviderSettingsUpdate,
   ReferenceImageImportFile
 } from '@shared/types'
@@ -17,6 +18,7 @@ import { ImageService } from './image-service'
 import { PromptService } from './prompt-service'
 import { SettingsStore } from './settings'
 import { createMainWindowOptions } from './window-options'
+import { fetchProviderModels } from './provider-models'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -71,7 +73,36 @@ function registerImageProtocol(): void {
 
 function registerIpc(): void {
   ipcMain.handle('settings:get', () => settings.getPublicSettings())
-  ipcMain.handle('settings:update', (_event, input: ProviderSettingsUpdate) => settings.update(input))
+  ipcMain.handle('settings:update', (_event, input: ProviderSettingsUpdate) => {
+    const next = settings.update(input)
+    database.setExtraImageRoot(next.imagesRoot || null)
+    return next
+  })
+  ipcMain.handle('settings:choose-images-root', async () => {
+    const current = settings.getPublicSettings().imagesRootEffective
+    const options = {
+      title: '选择图片存储位置',
+      defaultPath: current,
+      properties: ['openDirectory' as const, 'createDirectory' as const]
+    }
+    const result = mainWindow ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('provider:list', () => database.listProviders())
+  ipcMain.handle('provider:create', (_event, input: ProviderInput) => database.createProvider(input))
+  ipcMain.handle('provider:update', (_event, id: string, input: ProviderInput) => database.updateProvider(id, input))
+  ipcMain.handle('provider:remove', (_event, id: string) => database.removeProvider(id))
+  ipcMain.handle('provider:set-default', (_event, id: string) => database.setDefaultProvider(id))
+  ipcMain.handle('provider:models', (_event, providerId: string) => database.listProviderModels(providerId))
+  ipcMain.handle('provider:save-models', (_event, providerId: string, modelIds: string[]) =>
+    database.saveProviderModels(providerId, modelIds))
+  ipcMain.handle('provider:fetch-models', async (_event, providerId: string) => {
+    const provider = database.getProvider(providerId)
+    if (!provider) throw new Error('供应商不存在。')
+    return await fetchProviderModels(provider)
+  })
 
   ipcMain.handle('conversation:list', () => database.listConversations())
   ipcMain.handle('conversation:create', (_event, input?: ConversationCreateInput) => database.createConversation(input))
@@ -143,6 +174,17 @@ function registerIpc(): void {
     database.reorderConversationReferences(conversationId, referenceImageIds))
   ipcMain.handle('reference:url', (_event, id: string) => `pictverse-image://reference/${encodeURIComponent(id)}`)
   ipcMain.handle('shell:open-path', (_event, filePath: string) => shell.openPath(filePath))
+  ipcMain.handle('shell:open-external', (_event, rawUrl: string) => {
+    if (typeof rawUrl !== 'string') return
+    let parsed: URL
+    try {
+      parsed = new URL(rawUrl)
+    } catch {
+      return
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
+    void shell.openExternal(parsed.toString())
+  })
 }
 
 app.whenReady().then(() => {
@@ -150,7 +192,8 @@ app.whenReady().then(() => {
   const dataDir = getDataDir()
   database = new AppDatabase(dataDir)
   database.recoverInterruptedRuns()
-  settings = new SettingsStore(join(dataDir, 'settings.json'))
+  settings = new SettingsStore(join(dataDir, 'settings.json'), database.imagesDir)
+  database.setExtraImageRoot(settings.getPublicSettings().imagesRoot || null)
   imageService = new ImageService(database, settings)
   promptService = new PromptService(settings)
   registerImageProtocol()

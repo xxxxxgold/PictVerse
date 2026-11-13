@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { ImageService } from './image-service'
+import { conversationDirName } from './conversation-dir'
+
+/** 各测试共用的假会话：id/标题/创建时间 */
+const conversation = { id: 'c1', title: '测试会话', createdAt: new Date().toISOString() }
 
 function deferredResponse(): {
   promise: Promise<Response>
@@ -54,14 +58,14 @@ describe('image service progress', () => {
     try {
       const imageService = new ImageService(
         {
-          getConversation: () => ({ autoSaveHistory: true }),
+          getConversation: () => ({ autoSaveHistory: true, id: conversation.id, title: conversation.title, createdAt: conversation.createdAt }),
           insertRun: () => run,
           insertHistory,
           updateRun: vi.fn((_id, input) => ({ ...run, ...input, items: [] })),
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-progress-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-progress-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )
@@ -122,14 +126,14 @@ describe('image service progress', () => {
     try {
       const imageService = new ImageService(
         {
-          getConversation: () => ({ autoSaveHistory: true }),
+          getConversation: () => ({ autoSaveHistory: true, id: conversation.id, title: conversation.title, createdAt: conversation.createdAt }),
           insertRun: () => run,
           insertHistory,
           updateRun: vi.fn((_id, input) => ({ ...run, ...input, items: [] })),
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-progress-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-progress-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )
@@ -190,14 +194,14 @@ describe('image service progress', () => {
     try {
       const imageService = new ImageService(
         {
-          getConversation: () => ({ autoSaveHistory: true }),
+          getConversation: () => ({ autoSaveHistory: true, id: conversation.id, title: conversation.title, createdAt: conversation.createdAt }),
           insertRun: () => run,
           insertHistory,
           updateRun: vi.fn((_id, input) => ({ ...run, ...input, items: [] })),
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-progress-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-progress-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )
@@ -214,6 +218,9 @@ describe('image service progress', () => {
       })
 
       expect(insertHistory.mock.calls[0][0].filePath).toMatch(/\.jpg$/)
+      // 落盘链路：文件应位于 imagesRootEffective/<会话子目录>/ 下
+      const savedPath = insertHistory.mock.calls[0][0].filePath as string
+      expect(savedPath).toContain(conversationDirName({ id: 'c1', title: '测试会话', createdAt: conversation.createdAt }))
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -249,14 +256,14 @@ describe('image service progress', () => {
     try {
       const imageService = new ImageService(
         {
-          getConversation: () => ({ autoSaveHistory: true }),
+          getConversation: () => ({ autoSaveHistory: true, id: conversation.id, title: conversation.title, createdAt: conversation.createdAt }),
           insertRun: () => run,
           insertHistory,
           updateRun: vi.fn((_id, input) => ({ ...run, ...input, items: [] })),
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-progress-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-progress-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )
@@ -321,7 +328,7 @@ describe('image service progress', () => {
     try {
       const imageService = new ImageService(
         {
-          getConversation: () => ({ autoSaveHistory: true }),
+          getConversation: () => ({ autoSaveHistory: true, id: conversation.id, title: conversation.title, createdAt: conversation.createdAt }),
           listConversationReferences: () => [reference],
           insertRun: () => run,
           insertRunReferences,
@@ -330,7 +337,7 @@ describe('image service progress', () => {
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-edit-output-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-progress-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )

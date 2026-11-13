@@ -9,3 +9,6 @@ data/
 .env.*
 dist-web/
 dist-server/
+
+tmp/
+.trellis/

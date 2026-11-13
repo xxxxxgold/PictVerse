@@ -131,7 +131,15 @@ export function ImageTile({
       }}
     >
       {selectionControl}
-      <img src={src} alt={item.prompt} />
+      {item.filePath && /\.gif$/i.test(item.filePath) ? (
+        <>
+          <img className="gif-still" src={src} alt={item.prompt} />
+          <video className="gif-live" src={src} muted loop playsInline />
+          <span className="gif-badge">GIF</span>
+        </>
+      ) : (
+        <img src={src} alt={item.prompt} />
+      )}
       <div className="art-tools">
         <button
           title="复制"

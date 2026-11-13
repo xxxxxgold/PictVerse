@@ -92,7 +92,7 @@ describe('image preview zoom helpers', () => {
       { label: '生成时间', value: '2026-05-10 12:34:56' },
       { label: '用时', value: '1m 5s' },
       { label: '比例', value: '3:4' },
-      { label: '质量', value: '高' },
+      { label: '质量', value: 'high' },
       { label: '尺寸', value: '1024x1536' },
       { label: '格式', value: 'JPEG' },
       { label: '大小', value: '2.5 MB' },

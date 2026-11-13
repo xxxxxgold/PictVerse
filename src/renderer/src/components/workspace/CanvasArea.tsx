@@ -30,7 +30,8 @@ export function CanvasArea({
     conversations,
     activeConversationId,
     generatingByConversation,
-    removedGenerationIndexesByRunId
+    removedGenerationIndexesByRunId,
+    updateActiveConversation
   } = useAppStore()
   const refreshConversationResults = useAppStore((state) => state.refreshConversationResults)
   const deleteHistoryItems = useAppStore((state) => state.deleteHistoryItems)
@@ -133,7 +134,42 @@ export function CanvasArea({
       </div>
       <div className="preview-grid">
         {workspaceEntries.length === 0 && !generating ? (
-          <div className="empty-state grid-empty">生成后的图片会显示在这里</div>
+          <div className="canvas-empty">
+            <span className="ce-glyph">✦</span>
+            <h3>还没有生成记录</h3>
+            <p>输入提示词开始，或者从下面挑一个起手</p>
+            <div className="ce-chips">
+              <button
+                onClick={() =>
+                  void updateActiveConversation({
+                    draftPrompt:
+                      '一座明亮的玻璃温室，清晨薄雾漂浮在植物之间，浅绿色与奶白色，自然摄影质感，柔和侧逆光，浅景深。'
+                  })
+                }
+              >
+                玻璃温室 · 晨雾
+              </button>
+              <button
+                onClick={() =>
+                  void updateActiveConversation({
+                    draftPrompt:
+                      '赛博朋克街头，霓虹灯下的雨夜，湿润地面反射，青紫对撞色，电影级宽画幅。'
+                  })
+                }
+              >
+                霓虹雨夜 · 赛博街头
+              </button>
+              <button
+                onClick={() =>
+                  void updateActiveConversation({
+                    draftPrompt: '水墨风格的远山与飞鸟，宣纸质地，大面积留白，东方意境。'
+                  })
+                }
+              >
+                水墨远山 · 留白
+              </button>
+            </div>
+          </div>
         ) : null}
         {visibleEntries.map((entry) => renderWorkspaceEntry(entry, previewItems, generationClockMs))}
       </div>

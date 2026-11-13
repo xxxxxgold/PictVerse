@@ -22,7 +22,7 @@ export type WebReferenceBlobRecord = {
 }
 
 const 数据库名称 = 'PictVerseWebDB'
-const 数据库版本 = 1
+const 数据库版本 = 2
 
 let 数据库连接: Promise<IDBDatabase> | null = null
 
@@ -50,6 +50,8 @@ export function openWebDatabase(): Promise<IDBDatabase> {
         referenceImages.createIndex('conversationId', 'conversationId')
         referenceImages.createIndex('sortOrder', 'sortOrder')
         const referenceImageBlobs = createStore(db, 'referenceImageBlobs')
+        createStore(db, 'providers')
+        createStore(db, 'providerModels')
         referenceImageBlobs.createIndex('referenceImageId', 'referenceImageId', { unique: true })
       }
     })

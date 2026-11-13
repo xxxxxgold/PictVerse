@@ -167,7 +167,10 @@ describe('image service cancellation', () => {
       const imageService = new ImageService(
         {
           getConversation: () => ({
-            autoSaveHistory: true
+            autoSaveHistory: true,
+            id: 'c1',
+            title: '测试会话',
+            createdAt: new Date().toISOString()
           }),
           insertRun: () => run,
           insertHistory: vi.fn((input) => {
@@ -179,7 +182,7 @@ describe('image service cancellation', () => {
           imagesDir: mkdtempSync(join(tmpdir(), 'pictverse-cancel-test-'))
         } as never,
         {
-          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2' }),
+          getPublicSettings: () => ({ baseURL: 'https://example.test', defaultModel: 'gpt-image-2', imagesRootEffective: mkdtempSync(join(tmpdir(), 'pictverse-cancel-out-')) }),
           getApiKey: () => 'sk-test'
         } as never
       )

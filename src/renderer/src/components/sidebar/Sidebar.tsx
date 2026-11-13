@@ -2,21 +2,16 @@ import type { JSX } from 'react'
 import { Loader2, Trash2 } from 'lucide-react'
 import { useAppStore } from '@renderer/store/app-store'
 import { getSessionRowView } from '@renderer/session-list'
-import { getThemeToggleView } from '@renderer/theme-toggle'
-import { appVersion } from '@shared/app-version'
 
 export function Sidebar(): JSX.Element {
   const {
     conversations,
     activeConversationId,
-    darkMode,
     loading,
     generatingByConversation,
     setActiveConversation,
-    deleteConversation,
-    toggleTheme
+    deleteConversation
   } = useAppStore()
-  const themeToggle = getThemeToggleView(darkMode)
 
   return (
     <aside className="sidebar">
@@ -56,14 +51,7 @@ export function Sidebar(): JSX.Element {
         })}
       </div>
       <div className="app-footer">
-        <div className="version-line">
-          <span>绘世</span>
-          <span>v{appVersion}</span>
-        </div>
-        <button className="theme-toggle" onClick={toggleTheme}>
-          <span>{themeToggle.label}</span>
-          <span className={themeToggle.switchClassName} />
-        </button>
+        <span className="footer-hint">按最近更新排序</span>
       </div>
     </aside>
   )

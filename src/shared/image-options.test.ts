@@ -18,7 +18,10 @@ import {
   formatImageQuality,
   getDefaultImageSize,
   getImageSizeOptions,
+  getModelCapabilities,
+  getOutputFormatsFor,
   ratioToSize,
+  resolveModelCapabilities,
   supportsImageInputFidelity
 } from './image-options'
 
@@ -42,17 +45,19 @@ describe('image options', () => {
   it('exposes GPT and compatibility quality options', () => {
     expect(IMAGE_QUALITIES).toEqual(['auto', 'low', 'medium', 'high'])
     expect(IMAGE_QUALITY_LABELS).toEqual({
-      auto: '自动',
-      low: '低',
-      medium: '中',
-      high: '高'
+      auto: 'auto',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'xhigh',
+      max: 'max'
     })
-    expect(formatImageQuality('high')).toBe('高')
+    expect(formatImageQuality('high')).toBe('high')
     expect(IMAGE_OUTPUT_FORMATS).toEqual(['jpeg', 'png', 'webp'])
     expect(DEFAULT_IMAGE_OUTPUT_FORMAT).toBe('png')
-    expect(IMAGE_OUTPUT_FORMAT_LABELS).toEqual({ jpeg: 'JPEG', png: 'PNG', webp: 'WebP' })
+    expect(IMAGE_OUTPUT_FORMAT_LABELS).toEqual({ jpeg: 'JPEG', png: 'PNG', webp: 'WebP', svg: 'SVG', gif: 'GIF' })
     expect(IMAGE_BACKGROUNDS).toEqual(['auto', 'opaque'])
-    expect(IMAGE_BACKGROUND_LABELS).toEqual({ auto: '自动', opaque: '不透明' })
+    expect(IMAGE_BACKGROUND_LABELS).toEqual({ auto: '自动', opaque: '不透明', transparent: '透明', chroma_green: '绿幕', chroma_magenta: '品红' })
     expect(IMAGE_MODERATIONS).toEqual(['auto', 'low'])
     expect(IMAGE_MODERATION_LABELS).toEqual({ auto: '自动', low: '低' })
     expect(IMAGE_INPUT_FIDELITIES).toEqual(['low', 'high'])
@@ -122,5 +127,78 @@ describe('image options', () => {
       stream: true,
       partial_images: 3
     })
+  })
+
+  it('derives capabilities from the model name and returns null for unknown models', () => {
+    expect(getModelCapabilities('gpt-image-2.6-flare')).toEqual({ mask: true, gif: true, svg: true })
+    expect(getModelCapabilities('GPT-Image-2.6-sunburst')).toEqual({ mask: true, gif: true, svg: true })
+    expect(getModelCapabilities('gpt-image-2.5-flare')).toEqual({ mask: true, gif: false, svg: false })
+    expect(getModelCapabilities('gpt-image-2')).toEqual({ mask: true, gif: false, svg: false })
+    expect(getModelCapabilities('flux-kontext')).toBeNull()
+    expect(getModelCapabilities('  ')).toBeNull()
+  })
+
+  it('lets provider overrides win over model derivation', () => {
+    const provider = {
+      supportsMask: false,
+      supportsGif: true,
+      supportsSvg: true,
+      capabilityMask: 'off' as const,
+      capabilityGif: 'auto' as const,
+      capabilitySvg: 'auto' as const
+    }
+    expect(resolveModelCapabilities('gpt-image-2.6-flare', provider)).toEqual({
+      mask: false,
+      gif: true,
+      svg: true
+    })
+
+    expect(
+      resolveModelCapabilities('gpt-image-2.5-flare', { ...provider, capabilityGif: 'on', capabilitySvg: 'on' })
+    ).toEqual({ mask: false, gif: true, svg: true })
+  })
+
+  it('falls back to provider flags only when the model is unknown', () => {
+    const provider = {
+      supportsMask: true,
+      supportsGif: true,
+      supportsSvg: false,
+      capabilityMask: 'auto' as const,
+      capabilityGif: 'auto' as const,
+      capabilitySvg: 'auto' as const
+    }
+    expect(resolveModelCapabilities('some-relay-model', provider)).toEqual({
+      mask: true,
+      gif: true,
+      svg: false
+    })
+    // 已知模型不受 supports_* 影响
+    expect(resolveModelCapabilities('gpt-image-2.5-flare', provider)).toEqual({
+      mask: true,
+      gif: false,
+      svg: false
+    })
+    // 供应商缺失时按历史默认值
+    expect(resolveModelCapabilities('some-relay-model', null)).toEqual({
+      mask: true,
+      gif: false,
+      svg: false
+    })
+  })
+
+  it('filters output formats by resolved capabilities while keeping the original order', () => {
+    expect(getOutputFormatsFor('gpt-image-2.6-flare')).toEqual(['png', 'jpeg', 'webp', 'svg', 'gif'])
+    expect(getOutputFormatsFor('gpt-image-2.5-flare')).toEqual(['jpeg', 'png', 'webp'])
+    expect(getOutputFormatsFor('gpt-image-2')).toEqual(['jpeg', 'png', 'webp'])
+    expect(
+      getOutputFormatsFor('gpt-image-2.5-flare', {
+        supportsMask: true,
+        supportsGif: false,
+        supportsSvg: false,
+        capabilityMask: 'auto',
+        capabilityGif: 'off',
+        capabilitySvg: 'on'
+      })
+    ).toEqual(['jpeg', 'png', 'webp', 'svg'])
   })
 })

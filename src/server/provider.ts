@@ -1,5 +1,5 @@
 import { buildImageEditEndpoint, buildImageEndpoint, buildImageRequestBody, getDefaultImageSize } from '../shared/image-options'
-import type { GenerateImageInput, ImageInputFidelity, ImageOutputFormat } from '../shared/types'
+import type { GenerateImageInput } from '../shared/types'
 import type { ServerEnv } from './env'
 
 export type ReferenceImagePayload = {

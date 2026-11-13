@@ -1,49 +1,70 @@
-import { useEffect, useState, type JSX } from 'react'
-import { CircleHelp, Settings } from 'lucide-react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
+import { CircleHelp, Dices, Lock } from 'lucide-react'
 import {
   DEFAULT_IMAGE_OUTPUT_FORMAT,
   IMAGE_BACKGROUNDS,
   IMAGE_INPUT_FIDELITIES,
   IMAGE_MODERATIONS,
   IMAGE_OUTPUT_FORMATS,
-  IMAGE_QUALITIES,
   IMAGE_RATIOS,
   formatImageQuality,
   getDefaultImageSize,
   getImageSizeOptions,
+  getImageQualities,
+  getOutputFormatsFor,
+  isImage26,
+  IMAGE_BACKGROUNDS_26,
   IMAGE_BACKGROUND_LABELS,
   IMAGE_INPUT_FIDELITY_LABELS,
   IMAGE_MODERATION_LABELS,
   IMAGE_OUTPUT_FORMAT_LABELS,
+  resolveModelCapabilities,
   supportsImageInputFidelity
 } from '@shared/image-options'
-import { DEFAULT_PROMPT_MODEL } from '@shared/prompt-options'
-import type { ImageQuality, ImageRatio } from '@shared/types'
+import type { ImageRatio } from '@shared/types'
+import { resolveActiveProvider } from '@shared/provider-selection'
 import { useAppStore } from '@renderer/store/app-store'
 import { GallerySelect } from '@renderer/components/gallery/GallerySelect'
 
 const ratios: ImageRatio[] = IMAGE_RATIOS
-const qualities: ImageQuality[] = IMAGE_QUALITIES
 
 export function SettingsPanel(): JSX.Element {
-  const { settings, conversations, activeConversationId, updateActiveConversation, updateSettings } = useAppStore()
+  const { conversations, activeConversationId, updateActiveConversation, providers } = useAppStore()
   const conversation = conversations.find((item) => item.id === activeConversationId) || null
   const isImageToImage = (conversation?.referenceImages.length || 0) > 0
-  const [baseURL, setBaseURL] = useState(settings?.baseURL || 'https://api.openai.com')
-  const [defaultModel, setDefaultModel] = useState(settings?.defaultModel || 'gpt-image-2')
-  const [promptModel, setPromptModel] = useState(settings?.promptModel || DEFAULT_PROMPT_MODEL)
-  const [apiKey, setApiKey] = useState('')
-  const isWebDeployment = settings?.baseURL === '由服务器环境变量配置'
+  const [providerModels, setProviderModels] = useState<string[]>([])
+
+  const activeProviderId = resolveActiveProvider(conversation?.providerId, providers)?.id ?? null
 
   useEffect(() => {
-    if (settings) {
-      setBaseURL(settings.baseURL)
-      setDefaultModel(settings.defaultModel)
-      setPromptModel(settings.promptModel)
+    if (!activeProviderId) {
+      setProviderModels([])
+      return
     }
-  }, [settings])
+    let cancelled = false
+    void window.pictverse.provider.models(activeProviderId).then((rows) => {
+      if (!cancelled) setProviderModels(rows.map((row) => row.modelId))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeProviderId])
+
+  const modelOptions = useMemo(() => {
+    const list = providerModels.length ? providerModels : [conversation?.model || '']
+    return list.filter(Boolean).map((model) => ({ value: model, label: model }))
+  }, [conversation?.model, providerModels])
 
   if (!conversation) return <aside className="inspector" />
+
+  const activeProvider = resolveActiveProvider(conversation.providerId, providers)
+  const capabilities = resolveModelCapabilities(conversation.model, activeProvider)
+  const outputFormats = getOutputFormatsFor(conversation.model, activeProvider)
+  const capsHint = [
+    `遮罩${capabilities.mask ? '开' : '关'}`,
+    `GIF${capabilities.gif ? '开' : '关'}`,
+    `SVG${capabilities.svg ? '开' : '关'}`
+  ].join(' · ')
 
   const sizeOptions = getImageSizeOptions(conversation.ratio)
   const selectedSize = sizeOptions.some((option) => option.value === conversation.size)
@@ -54,64 +75,15 @@ export function SettingsPanel(): JSX.Element {
     <aside className="inspector">
       <div className="config-stack">
         <section className="panel">
-          <h3>
-            服务配置
-            <span className={`pill ${settings?.apiKeyStored ? 'good' : 'warn'}`}>{settings?.apiKeyStored ? '已配置' : '未配置'}</span>
-          </h3>
-          {isWebDeployment ? (
-            <div className="status-error">
-              Web 版的 Base URL 和 API Key 由 Docker 环境变量统一配置，浏览器中不可修改。
-            </div>
-          ) : (
-            <>
-              <label className="field">
-                <span>Base URL</span>
-                <input className="input-control" value={baseURL} onChange={(event) => setBaseURL(event.target.value)} />
-              </label>
-              <label className="field">
-                <span>API Key</span>
-                <input
-                  className="input-control"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  type="password"
-                  placeholder={settings?.apiKeyStored ? '已保存，留空不修改' : 'sk-...'}
-                />
-              </label>
-            </>
-          )}
-          <label className="field">
-            <span>图片默认模型</span>
-            <input className="input-control" value={defaultModel} onChange={(event) => setDefaultModel(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>提示词助手模型</span>
-            <input className="input-control" value={promptModel} onChange={(event) => setPromptModel(event.target.value)} />
-          </label>
-          {settings?.insecureStorage ? <div className="status-error">当前系统无法加密，API Key 已降级保存在本地设置文件中。</div> : null}
-          <button
-            className="primary full"
-            onClick={() => {
-              if (isWebDeployment) {
-                void updateSettings({ defaultModel, promptModel })
-              } else {
-                void updateSettings({ baseURL, defaultModel, promptModel, apiKey: apiKey.trim() ? apiKey : undefined })
-                setApiKey('')
-              }
-            }}
-          >
-            <Settings size={15} />
-            保存服务配置
-          </button>
-        </section>
-        <section className="panel">
           <h3>当前会话参数</h3>
           <label className="field">
             <span>模型</span>
-            <input
-              className="input-control"
+            <GallerySelect
               value={conversation.model}
-              onChange={(event) => void updateActiveConversation({ model: event.target.value })}
+              options={modelOptions}
+              ariaLabel="选择模型"
+              className="settings-select"
+              onChange={(model) => void updateActiveConversation({ model })}
             />
           </label>
           <div className="field">
@@ -144,14 +116,14 @@ export function SettingsPanel(): JSX.Element {
               <button
                 type="button"
                 className="info-icon"
-                title="质量越高，细节通常更多，但生成会更慢，也更容易放大成本。"
+                title="quality：渲染精度档位。越高细节越精细、耗时越长、成本越高。与 2.6 的 complexity 不同——quality 管画质，complexity 管画面元素密度。"
                 aria-label="质量说明"
               >
                 <CircleHelp size={14} />
               </button>
             </span>
             <div className="segmented">
-              {qualities.map((quality) => (
+              {getImageQualities(conversation.model).map((quality) => (
                 <button
                   key={quality}
                   className={conversation.quality === quality ? 'on' : ''}
@@ -191,7 +163,7 @@ export function SettingsPanel(): JSX.Element {
                   <button
                     type="button"
                     className="info-icon"
-                    title={`控制最终图片文件格式，默认使用 ${DEFAULT_IMAGE_OUTPUT_FORMAT.toUpperCase()}`}
+                    title={`控制最终图片文件格式，默认使用 ${DEFAULT_IMAGE_OUTPUT_FORMAT.toUpperCase()}。当前模型能力：${capsHint}`}
                     aria-label="输出格式说明"
                   >
                     <CircleHelp size={14} />
@@ -199,7 +171,7 @@ export function SettingsPanel(): JSX.Element {
                 </span>
                 <GallerySelect
                   value={conversation.outputFormat}
-                  options={IMAGE_OUTPUT_FORMATS.map((value) => ({ value, label: IMAGE_OUTPUT_FORMAT_LABELS[value] }))}
+                  options={outputFormats.map((value) => ({ value, label: IMAGE_OUTPUT_FORMAT_LABELS[value] }))}
                   ariaLabel="输出格式"
                   className="settings-select"
                   onChange={(outputFormat) => void updateActiveConversation({ outputFormat })}
@@ -224,7 +196,7 @@ export function SettingsPanel(): JSX.Element {
                   max={100}
                   step={1}
                   value={conversation.outputCompression ?? ''}
-                  disabled={conversation.outputFormat === 'png'}
+                  disabled={!['jpeg', 'webp'].includes(conversation.outputFormat)}
                   placeholder="留空"
                   onChange={(event) => {
                     const value = event.target.value.trim()
@@ -246,7 +218,7 @@ export function SettingsPanel(): JSX.Element {
                 </span>
                 <GallerySelect
                   value={conversation.background}
-                  options={IMAGE_BACKGROUNDS.map((value) => ({ value, label: IMAGE_BACKGROUND_LABELS[value] }))}
+                  options={(isImage26(conversation.model) ? IMAGE_BACKGROUNDS_26 : IMAGE_BACKGROUNDS).map((value) => ({ value, label: IMAGE_BACKGROUND_LABELS[value] }))}
                   ariaLabel="背景"
                   className="settings-select"
                   onChange={(background) => void updateActiveConversation({ background })}
@@ -322,6 +294,156 @@ export function SettingsPanel(): JSX.Element {
                   />
                 </label>
               ) : null}
+            </div>
+          </details>
+          <details className="advanced-settings" key={isImage26(conversation.model) ? '26-on' : '26-off'} open={isImage26(conversation.model)}>
+            <summary>
+              <span>2.6 专属</span>
+              <span className={`pill tiny ${isImage26(conversation.model) ? 'good' : ''}`}>
+                {isImage26(conversation.model) ? '已启用' : '需要 2.6 模型'}
+              </span>
+            </summary>
+            <div className="advanced-settings-body">
+              <label className="field">
+                <span className="field-label-with-help">
+                  <span>复杂度 complexity</span>
+                  <button
+                    type="button"
+                    className="info-icon"
+                    title="complexity（2.6 新增）：控制画面里元素的数量与繁复程度。low 干净留白，medium 适中，high 元素密集。它不改变渲染精度，只改变画面信息量。"
+                    aria-label="复杂度说明"
+                  >
+                    <CircleHelp size={14} />
+                  </button>
+                </span>
+                <div className="segmented">
+                  {(['low', 'medium', 'high'] as const).map((level) => (
+                    <button
+                      key={level}
+                      className={conversation.complexity === level ? 'on' : ''}
+                      onClick={() =>
+                        void updateActiveConversation({
+                          complexity: conversation.complexity === level ? null : level
+                        })
+                      }
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </label>
+              <label className="field">
+                <span className="field-label-with-help">
+                  <span>GIF 帧数</span>
+                  <button
+                    type="button"
+                    className="info-icon"
+                    title="仅输出格式为 GIF 时生效，范围 2–64 帧。"
+                    aria-label="GIF 帧数说明"
+                  >
+                    <CircleHelp size={14} />
+                  </button>
+                </span>
+                <input
+                  className="input-control"
+                  type="number"
+                  min={2}
+                  max={64}
+                  step={1}
+                  value={conversation.frameCount ?? ''}
+                  disabled={conversation.outputFormat !== 'gif'}
+                  placeholder="默认 9"
+                  onChange={(event) => {
+                    const value = event.target.value.trim()
+                    void updateActiveConversation({ frameCount: value ? Number(value) : null })
+                  }}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label-with-help">
+                  <span>帧间隔（ms）</span>
+                  <button
+                    type="button"
+                    className="info-icon"
+                    title="仅 GIF 生效，范围 20–2000，需为 10 的倍数。"
+                    aria-label="帧间隔说明"
+                  >
+                    <CircleHelp size={14} />
+                  </button>
+                </span>
+                <input
+                  className="input-control"
+                  type="number"
+                  min={20}
+                  max={2000}
+                  step={10}
+                  value={conversation.frameDurationMs ?? ''}
+                  disabled={conversation.outputFormat !== 'gif'}
+                  placeholder="默认 200"
+                  onChange={(event) => {
+                    const value = event.target.value.trim()
+                    void updateActiveConversation({ frameDurationMs: value ? Number(value) : null })
+                  }}
+                />
+              </label>
+            </div>
+          </details>
+          <details className="advanced-settings" open>
+            <summary>
+              <span>随机种子</span>
+              <span className={`pill tiny ${conversation.seedLocked ? 'good' : ''}`}>
+                {conversation.seedLocked ? '已锁定' : '随机'}
+              </span>
+            </summary>
+            <div className="advanced-settings-body">
+              <label className="field">
+                <span className="field-label-with-help">
+                  <span>seed</span>
+                  <button
+                    type="button"
+                    className="info-icon"
+                    title="锁定后可复现同一张图；留空表示每次随机。"
+                    aria-label="种子说明"
+                  >
+                    <CircleHelp size={14} />
+                  </button>
+                </span>
+                <div className="seed-row">
+                  <input
+                    className="input-control"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={conversation.seed ?? ''}
+                    placeholder="随机"
+                    onChange={(event) => {
+                      const value = event.target.value.trim()
+                      void updateActiveConversation({ seed: value ? Number(value) : null })
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="seed-dice"
+                    title="随机生成一个种子"
+                    onClick={() => void updateActiveConversation({ seed: Math.floor(Math.random() * 1e9) })}
+                  >
+                    <Dices size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`seed-lock ${conversation.seedLocked ? 'on' : ''}`}
+                    title={conversation.seedLocked ? '解锁种子' : '锁定种子'}
+                    onClick={() =>
+                      void updateActiveConversation({
+                        seedLocked: !conversation.seedLocked,
+                        seed: conversation.seedLocked ? conversation.seed : conversation.seed ?? Math.floor(Math.random() * 1e9)
+                      })
+                    }
+                  >
+                    <Lock size={14} />
+                  </button>
+                </div>
+              </label>
             </div>
           </details>
           <ToggleRow

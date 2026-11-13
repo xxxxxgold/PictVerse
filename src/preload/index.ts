@@ -6,14 +6,26 @@ import type {
   HistoryListOptions,
   PictVerseAPI,
   PromptAssistInput,
+  ProviderInput,
   ProviderSettingsUpdate,
   ReferenceImageImportFile
 } from '@shared/types'
 
 const api: PictVerseAPI = {
+  provider: {
+    list: () => ipcRenderer.invoke('provider:list'),
+    create: (input: ProviderInput) => ipcRenderer.invoke('provider:create', input),
+    update: (id: string, input: ProviderInput) => ipcRenderer.invoke('provider:update', id, input),
+    remove: (id: string) => ipcRenderer.invoke('provider:remove', id),
+    setDefault: (id: string) => ipcRenderer.invoke('provider:set-default', id),
+    models: (providerId: string) => ipcRenderer.invoke('provider:models', providerId),
+    fetchModels: (providerId: string) => ipcRenderer.invoke('provider:fetch-models', providerId),
+    saveModels: (providerId: string, modelIds: string[]) => ipcRenderer.invoke('provider:save-models', providerId, modelIds)
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
-    update: (input: ProviderSettingsUpdate) => ipcRenderer.invoke('settings:update', input)
+    update: (input: ProviderSettingsUpdate) => ipcRenderer.invoke('settings:update', input),
+    chooseImagesRoot: () => ipcRenderer.invoke('settings:choose-images-root')
   },
   conversation: {
     list: () => ipcRenderer.invoke('conversation:list'),
@@ -51,7 +63,8 @@ const api: PictVerseAPI = {
     url: (id: string) => `pictverse-image://reference/${encodeURIComponent(id)}`
   },
   shell: {
-    openPath: (filePath: string) => ipcRenderer.invoke('shell:open-path', filePath)
+    openPath: (filePath: string) => ipcRenderer.invoke('shell:open-path', filePath),
+    openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url)
   }
 }
 

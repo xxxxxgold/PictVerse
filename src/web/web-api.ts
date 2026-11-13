@@ -1,4 +1,4 @@
-import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize } from '@shared/image-options'
+import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, normalizeCapabilityOverride } from '@shared/image-options'
 import { DEFAULT_PROMPT_MODEL } from '@shared/prompt-options'
 import type {
   BatchDownloadResult,
@@ -14,6 +14,9 @@ import type {
   ImageOutputFormat,
   PictVerseAPI,
   PromptAssistInput,
+  Provider,
+  ProviderInput,
+  ProviderModel,
   ProviderSettings,
   ProviderSettingsUpdate,
   ReferenceImage,
@@ -75,8 +78,143 @@ const 默认配置: WebConfig = {
   promptAssistEnabled: true
 }
 
+/**
+ * 读取时归一化三态值：IndexedDB 里可能存有 '' / 'ON' / 0 之类的脏值，
+ * 与 SQLite 侧的 normalizeCapabilityOverride 保持同一语义，避免角标渲染成空框。
+ */
+function normalizeProvider(provider: Provider): Provider {
+  return {
+    ...provider,
+    capabilityMask: normalizeCapabilityOverride(provider.capabilityMask),
+    capabilityGif: normalizeCapabilityOverride(provider.capabilityGif),
+    capabilitySvg: normalizeCapabilityOverride(provider.capabilitySvg)
+  }
+}
+
+async function listProviders(): Promise<Provider[]> {
+  const rows = await listRecords<Provider>('providers')
+  return rows
+    .map(normalizeProvider)
+    .sort((left, right) => left.position - right.position)
+}
+
+async function createProvider(input: ProviderInput): Promise<Provider> {
+  const existing = await listProviders()
+  const now = new Date().toISOString()
+  const provider: Provider = {
+    id: generateUUID(),
+    name: input.name?.trim() || '未命名供应商',
+    baseURL: input.baseURL?.trim() || '',
+    apiKey: input.apiKey ?? null,
+    defaultModel: input.defaultModel?.trim() || DEFAULT_MODEL,
+    promptModel: input.promptModel ?? null,
+    supportsMask: input.supportsMask ?? true,
+    supportsGif: input.supportsGif ?? false,
+    supportsSvg: input.supportsSvg ?? false,
+    capabilityMask: input.capabilityMask ?? 'auto',
+    capabilityGif: input.capabilityGif ?? 'auto',
+    capabilitySvg: input.capabilitySvg ?? 'auto',
+    pricingMode: input.pricingMode ?? 'unified',
+    priceUnified: input.priceUnified ?? null,
+    price1K: input.price1K ?? null,
+    price2K: input.price2K ?? null,
+    price4K: input.price4K ?? null,
+    rateTextInput: input.rateTextInput ?? null,
+    rateImageInput: input.rateImageInput ?? null,
+    rateImageOutput: input.rateImageOutput ?? null,
+    isDefault: input.isDefault ?? existing.length === 0,
+    position: existing.length,
+    createdAt: now,
+    updatedAt: now
+  }
+  return putRecord('providers', provider)
+}
+
+async function updateProvider(id: string, input: ProviderInput): Promise<Provider> {
+  const current = await getRecord<Provider>('providers', id)
+  if (!current) throw new Error('供应商不存在。')
+  const next: Provider = {
+    ...current,
+    ...input,
+    name: input.name?.trim() ?? current.name,
+    baseURL: input.baseURL?.trim() ?? current.baseURL,
+    defaultModel: input.defaultModel?.trim() ?? current.defaultModel,
+    // 旧记录没有这三列，读出来时补默认值，避免界面拿到 undefined
+    capabilityMask: input.capabilityMask ?? current.capabilityMask ?? 'auto',
+    capabilityGif: input.capabilityGif ?? current.capabilityGif ?? 'auto',
+    capabilitySvg: input.capabilitySvg ?? current.capabilitySvg ?? 'auto',
+    updatedAt: new Date().toISOString()
+  }
+  if (next.isDefault) {
+    const others = await listProviders()
+    await Promise.all(
+      others
+        .filter((item) => item.id !== next.id && item.isDefault)
+        .map((item) => putRecord('providers', { ...item, isDefault: false }))
+    )
+  }
+  return putRecord('providers', next)
+}
+
+async function removeProvider(id: string): Promise<void> {
+  await deleteRecord('providers', id)
+}
+
+async function setDefaultProvider(id: string): Promise<Provider[]> {
+  const providers = await listProviders()
+  await Promise.all(providers.map((item) => putRecord('providers', { ...item, isDefault: item.id === id })))
+  return listProviders()
+}
+
+async function listProviderModels(providerId: string): Promise<ProviderModel[]> {
+  const rows = await listRecords<ProviderModel>('providerModels')
+  return rows.filter((row) => row.providerId === providerId).sort((left, right) => left.position - right.position)
+}
+
+async function saveProviderModels(providerId: string, modelIds: string[]): Promise<ProviderModel[]> {
+  const existing = await listProviderModels(providerId)
+  await Promise.all(existing.map((row) => deleteRecord('providerModels', `${providerId}:${row.modelId}`)))
+  await Promise.all(
+    modelIds.map((modelId, index) =>
+      putRecord('providerModels', { id: `${providerId}:${modelId}`, providerId, modelId, added: true, position: index })
+    )
+  )
+  return listProviderModels(providerId)
+}
+
+async function fetchProviderModels(providerId: string): Promise<string[]> {
+  const providers = await listProviders()
+  const provider = providers.find((item) => item.id === providerId)
+  if (!provider) throw new Error('供应商不存在。')
+  const base = provider.baseURL.trim().replace(/\/+$/, '')
+  if (!base) throw new Error('供应商未配置 Base URL。')
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (provider.apiKey) headers.Authorization = `Bearer ${provider.apiKey}`
+  const response = await fetch(`${base}/v1/models`, { headers })
+  if (!response.ok) throw new Error(`获取模型失败：HTTP ${response.status}`)
+  const payload: unknown = await response.json()
+  const data = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)
+      ? ((payload as { data: unknown[] }).data)
+      : []
+  return data
+    .map((entry) => (typeof entry === 'string' ? entry : entry && typeof entry === 'object' ? (entry as { id?: string }).id : null))
+    .filter((id): id is string => Boolean(id))
+}
+
 export function createWebPictVerseAPI(): PictVerseAPI {
   return {
+    provider: {
+      list: listProviders,
+      create: createProvider,
+      update: updateProvider,
+      remove: removeProvider,
+      setDefault: setDefaultProvider,
+      models: listProviderModels,
+      fetchModels: fetchProviderModels,
+      saveModels: saveProviderModels
+    },
     settings: {
       get: getSettings,
       update: updateSettings
@@ -113,7 +251,10 @@ export function createWebPictVerseAPI(): PictVerseAPI {
       favorite: setFavorite
     },
     shell: {
-      openPath: async () => 'Web 端不支持打开本地文件路径。'
+      openPath: async () => 'Web 端不支持打开本地文件路径。',
+      openExternal: async (url: string) => {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      }
     }
   }
 }
@@ -125,12 +266,13 @@ async function getSettings(): Promise<ProviderSettings> {
     apiKeyStored: config.apiKeyStored,
     defaultModel: config.defaultModel,
     promptModel: config.promptModel,
-    insecureStorage: false
+    insecureStorage: false,
+    imagesRoot: '',
+    imagesRootEffective: ''
   }
 }
 
-async function updateSettings(input: ProviderSettingsUpdate): Promise<ProviderSettings> {
-  const current = await getSettings()
+async function updateSettings(input: ProviderSettingsUpdate): Promise<ProviderSettings> {  const current = await getSettings()
   const next: ProviderSettings = {
     ...current,
     defaultModel: input.defaultModel?.trim() || current.defaultModel,
@@ -188,6 +330,12 @@ async function createConversation(input: ConversationCreateInput = {}): Promise<
     stream: input.stream || false,
     partialImages: input.partialImages ?? 0,
     inputFidelity: input.inputFidelity ?? null,
+    providerId: input.providerId ?? null,
+    complexity: input.complexity ?? null,
+    frameCount: input.frameCount ?? null,
+    frameDurationMs: input.frameDurationMs ?? null,
+    seed: input.seed ?? null,
+    seedLocked: input.seedLocked ?? false,
     autoSaveHistory: input.autoSaveHistory ?? true,
     keepFailureDetails: input.keepFailureDetails ?? true,
     referenceImages: [],

@@ -10,6 +10,7 @@ import {
   supportsImageInputFidelity
 } from '@shared/image-options'
 import { elapsedMs } from '@shared/duration'
+import { conversationDirName } from './conversation-dir'
 import type {
   GenerateImageInput,
   GenerateImageResult,
@@ -48,6 +49,9 @@ export class ImageService {
     const apiKey = this.settings.getApiKey()
     const conversation = this.database.getConversation(input.conversationId)
     const globalVisible = conversation?.autoSaveHistory !== false
+    const targetDir = conversation
+      ? join(settings.imagesRootEffective, conversationDirName(conversation))
+      : settings.imagesRootEffective
     const prompt = input.prompt.trim()
     const model = input.model.trim() || settings.defaultModel
     const size = input.size.trim() || getDefaultImageSize(input.ratio)
@@ -107,7 +111,7 @@ export class ImageService {
             }
 
             const id = randomUUID()
-            const savedImage = await this.saveImage(id, image, input.outputFormat || DEFAULT_IMAGE_OUTPUT_FORMAT)
+            const savedImage = await this.saveImage(id, image, input.outputFormat || DEFAULT_IMAGE_OUTPUT_FORMAT, targetDir)
             const durationMs = elapsedMs(startedAtMs)
             succeededCount += 1
             const item = this.database.insertHistory({
@@ -218,11 +222,12 @@ export class ImageService {
   private async saveImage(
     id: string,
     image: ImageResponseData,
-    outputFormat: ImageOutputFormat
+    outputFormat: ImageOutputFormat,
+    targetDir: string
   ): Promise<{ filePath: string; fileSizeBytes: number }> {
-    mkdirSync(this.database.imagesDir, { recursive: true })
+    mkdirSync(targetDir, { recursive: true })
     if (image.b64_json) {
-      const filePath = join(this.database.imagesDir, `${id}${extensionFromOutputFormat(outputFormat)}`)
+      const filePath = join(targetDir, `${id}${extensionFromOutputFormat(outputFormat)}`)
       const fileBuffer = Buffer.from(image.b64_json, 'base64')
       writeFileSync(filePath, fileBuffer)
       return { filePath, fileSizeBytes: fileBuffer.length }
@@ -234,7 +239,7 @@ export class ImageService {
       const contentType = response.headers.get('content-type') || ''
       const urlPath = new URL(image.url).pathname
       const extension = extensionFromContentType(contentType) || extname(urlPath) || '.png'
-      const filePath = join(this.database.imagesDir, `${id}${extension}`)
+      const filePath = join(targetDir, `${id}${extension}`)
       const fileBuffer = Buffer.from(await response.arrayBuffer())
       writeFileSync(filePath, fileBuffer)
       return { filePath, fileSizeBytes: fileBuffer.length }
@@ -311,6 +316,14 @@ export class ImageService {
     }
     if (input.inputFidelity && supportsImageInputFidelity(input.model)) {
       formData.set('input_fidelity', input.inputFidelity)
+    }
+    if (input.complexity) formData.set('complexity', input.complexity)
+    if (input.frameCount != null) formData.set('frame_count', String(input.frameCount))
+    if (input.frameDurationMs != null) formData.set('frame_duration_ms', String(input.frameDurationMs))
+    if (input.seed != null) formData.set('seed', String(input.seed))
+    if (input.maskPngBase64) {
+      const maskBuffer = Buffer.from(input.maskPngBase64.replace(/^data:image\/png;base64,/, ''), 'base64')
+      formData.set('mask', new Blob([maskBuffer], { type: 'image/png' }), 'mask.png')
     }
     for (const referenceImage of referenceImages) {
       if (!referenceImage.filePath) continue
@@ -473,6 +486,8 @@ export class ImageService {
 function extensionFromContentType(contentType: string): string | null {
   if (contentType.includes('jpeg')) return '.jpg'
   if (contentType.includes('webp')) return '.webp'
+  if (contentType.includes('gif')) return '.gif'
+  if (contentType.includes('svg')) return '.svg'
   if (contentType.includes('png')) return '.png'
   return null
 }
@@ -480,6 +495,8 @@ function extensionFromContentType(contentType: string): string | null {
 function extensionFromOutputFormat(format: ImageOutputFormat): string {
   if (format === 'jpeg') return '.jpg'
   if (format === 'webp') return '.webp'
+  if (format === 'gif') return '.gif'
+  if (format === 'svg') return '.svg'
   return '.png'
 }
 

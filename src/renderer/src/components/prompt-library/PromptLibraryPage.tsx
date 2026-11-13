@@ -1,7 +1,8 @@
-import { useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
 import { BookOpen, Copy, PencilLine, Plus, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react'
 import { GallerySelect, type GallerySelectOption } from '@renderer/components/gallery/GallerySelect'
 import {
+  PROMPT_TEMPLATE_ANY_MODEL,
   clonePromptTemplate,
   createEmptyPromptTemplateInput,
   createPromptLibraryItem,
@@ -9,12 +10,14 @@ import {
   filterPromptTemplates,
   getPromptLibraryItems,
   getPromptTemplateCategories,
+  getPromptTemplateModels,
   type PromptLibraryItem,
   type PromptTemplate,
   type PromptTemplateInput,
   updatePromptLibraryItem
 } from '@renderer/prompt-library'
-import { IMAGE_QUALITIES, IMAGE_RATIOS, formatImageQuality } from '@shared/image-options'
+import { IMAGE_QUALITIES_EXTENDED, IMAGE_RATIOS, formatImageQuality } from '@shared/image-options'
+import { resolveActiveProvider } from '@shared/provider-selection'
 import { useAppStore } from '@renderer/store/app-store'
 import { PromptTemplateEditorModal } from './PromptTemplateEditorModal'
 
@@ -25,17 +28,45 @@ const ratioOptions: Array<GallerySelectOption<'all' | PromptTemplate['ratio']>> 
 
 const qualityOptions: Array<GallerySelectOption<'all' | PromptTemplate['quality']>> = [
   { value: 'all', label: '质量' },
-  ...IMAGE_QUALITIES.map((quality) => ({ value: quality, label: formatImageQuality(quality) }))
+  ...IMAGE_QUALITIES_EXTENDED.map((quality) => ({ value: quality, label: formatImageQuality(quality) }))
 ]
 
+const FOLLOW_CONVERSATION_LABEL = '跟随会话'
+
 export function PromptLibraryPage(): JSX.Element {
-  const { notify, applyPromptTemplate } = useAppStore()
+  const { notify, applyPromptTemplate, providers, conversations, activeConversationId } = useAppStore()
   const [items, setItems] = useState<PromptLibraryItem[]>(() => getPromptLibraryItems())
   const [searchQuery, setSearchQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [ratio, setRatio] = useState<'all' | PromptTemplate['ratio']>('all')
   const [quality, setQuality] = useState<'all' | PromptTemplate['quality']>('all')
+  const [model, setModel] = useState<'all' | string>('all')
   const [editingTemplate, setEditingTemplate] = useState<PromptLibraryEditorState | null>(null)
+  const [providerModels, setProviderModels] = useState<string[]>([])
+
+  const activeProviderId = useMemo(() => {
+    const conversation = conversations.find((item) => item.id === activeConversationId) || null
+    return resolveActiveProvider(conversation?.providerId, providers)?.id ?? null
+  }, [activeConversationId, conversations, providers])
+
+  useEffect(() => {
+    if (!activeProviderId) {
+      setProviderModels([])
+      return
+    }
+    let cancelled = false
+    void window.pictverse.provider
+      .models(activeProviderId)
+      .then((rows) => {
+        if (!cancelled) setProviderModels(rows.map((row) => row.modelId))
+      })
+      .catch(() => {
+        if (!cancelled) setProviderModels([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeProviderId])
 
   const categories = useMemo(() => getPromptTemplateCategories(items), [items])
   const tagOptions = useMemo(
@@ -48,7 +79,32 @@ export function PromptLibraryPage(): JSX.Element {
     () => categories.map((value) => ({ value, label: value })),
     [categories]
   )
-  const templates = useMemo(() => filterPromptTemplates(items, { query: searchQuery, category, ratio, quality }), [category, items, quality, ratio, searchQuery])
+
+  /** 候选模型：供应商已保存的模型 + 模板里出现过的模型，去重排序 */
+  const modelChoices = useMemo(
+    () =>
+      Array.from(new Set([...providerModels, ...getPromptTemplateModels(items)].map((value) => value.trim()).filter(Boolean)))
+        .sort((left, right) => left.localeCompare(right)),
+    [items, providerModels]
+  )
+
+  const modelFilterOptions = useMemo<Array<GallerySelectOption<string>>>(() => {
+    const options: Array<GallerySelectOption<string>> = [
+      { value: 'all', label: '模型' },
+      { value: PROMPT_TEMPLATE_ANY_MODEL, label: FOLLOW_CONVERSATION_LABEL },
+      ...modelChoices.map((value) => ({ value, label: value }))
+    ]
+    // 筛选值已不在候选里（例如模板被改掉）时补一个占位项，避免下拉显示为空
+    if (model !== 'all' && !options.some((option) => option.value === model)) {
+      options.push({ value: model, label: model })
+    }
+    return options
+  }, [model, modelChoices])
+
+  const templates = useMemo(
+    () => filterPromptTemplates(items, { query: searchQuery, category, ratio, quality, model }),
+    [category, items, model, quality, ratio, searchQuery]
+  )
 
   const refreshItems = () => setItems(getPromptLibraryItems())
 
@@ -56,6 +112,7 @@ export function PromptLibraryPage(): JSX.Element {
     setCategory('all')
     setRatio('all')
     setQuality('all')
+    setModel('all')
     setSearchQuery('')
   }
 
@@ -117,12 +174,13 @@ export function PromptLibraryPage(): JSX.Element {
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="搜索标题、标签、说明、提示词或分辨率"
+            placeholder="搜索标题、标签、说明、提示词、分辨率或模型"
           />
         </div>
         <GallerySelect value={category} options={[{ value: 'all', label: '分类' }, ...categoryOptions]} ariaLabel="筛选分类" onChange={setCategory} />
         <GallerySelect value={ratio} options={ratioOptions} ariaLabel="筛选比例" onChange={setRatio} />
         <GallerySelect value={quality} options={qualityOptions} ariaLabel="筛选质量" onChange={setQuality} />
+        <GallerySelect value={model} options={modelFilterOptions} ariaLabel="筛选生图模型" className="prompt-library-model-filter" onChange={setModel} />
         <button onClick={resetFilters}>
           <RotateCcw size={15} />
           重置
@@ -158,6 +216,11 @@ export function PromptLibraryPage(): JSX.Element {
                 <span className="pill good">{template.category}</span>
                 <span className="pill blue">{template.resolution}</span>
                 <span className="pill">{template.quality}</span>
+                {template.model ? (
+                  <span className="pill model" title={`生图模型：${template.model}`}>
+                    {template.model}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="prompt-template-tags">
@@ -225,9 +288,14 @@ export function PromptLibraryPage(): JSX.Element {
           initialValue={editingTemplate.initialValue}
           categoryOptions={categories}
           tagOptions={tagOptions}
+          modelOptions={modelChoices}
           onSave={async (value) => {
             const normalized = normalizeLibraryInput(value)
-            const saved = editingTemplate.id ? updatePromptLibraryItem(editingTemplate.id, normalized) : createPromptLibraryItem(normalized)
+            if (editingTemplate.id) {
+              updatePromptLibraryItem(editingTemplate.id, normalized)
+            } else {
+              createPromptLibraryItem(normalized)
+            }
             refreshItems()
             setEditingTemplate(null)
             notify(editingTemplate.id ? '已保存提示词' : '已新增提示词')
@@ -253,6 +321,7 @@ function normalizeLibraryInput(value: PromptTemplateInput): PromptTemplateInput 
     description: value.description.trim(),
     prompt: value.prompt.trim(),
     resolution: value.resolution.trim(),
+    model: value.model.trim(),
     tags: value.tags.map((tag) => tag.trim()).filter(Boolean)
   }
 }

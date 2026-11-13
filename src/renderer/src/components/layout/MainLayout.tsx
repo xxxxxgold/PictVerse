@@ -1,4 +1,5 @@
-import { useState, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, type JSX } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAppStore } from '@renderer/store/app-store'
 import { GalleryPage } from '@renderer/components/gallery/GalleryPage'
 import { PromptLibraryPage } from '@renderer/components/prompt-library/PromptLibraryPage'
@@ -15,50 +16,76 @@ export function MainLayout({
   activeConversationStartedAt: number | null
   generationClockMs: number
 }): JSX.Element {
-  const { view, settingsVisible } = useAppStore()
-  const isWorkspaceView = view === 'workspace'
-  const isLibraryView = view === 'gallery' || view === 'prompts'
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = Number(window.localStorage.getItem('pictverse-sidebar-width'))
-    return Number.isFinite(saved) && saved >= 180 && saved <= 380 ? saved : 244
-  })
+  const { view, drawer, toggleSessionsDrawer, toggleParamsDrawer, setDrawer } = useAppStore()
 
-  const startSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startWidth = sidebarWidth
-    const handlePointerMove = (moveEvent: PointerEvent) => {
-      const nextWidth = Math.min(380, Math.max(180, startWidth + moveEvent.clientX - startX))
-      setSidebarWidth(nextWidth)
-      window.localStorage.setItem('pictverse-sidebar-width', String(nextWidth))
+  // 抽屉打开时，点击抽屉外的任意位置或按下 Esc 都会收起
+  useEffect(() => {
+    if (drawer === 'none') return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      // 弹窗打开时让弹窗自己处理，避免误收抽屉
+      if (document.querySelector('.modal.open')) return
+      // 抽屉内部、边缘把手都不算「外面」
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('.drawer, .edge-handle')) return
+      setDrawer('none')
     }
-    const stopResize = () => {
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', stopResize)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (document.querySelector('.modal.open')) return
+      setDrawer('none')
     }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', stopResize)
-  }
+
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [drawer, setDrawer])
 
   return (
-    <main
-      className={`main ${settingsVisible && isWorkspaceView ? '' : 'settings-hidden'} ${isLibraryView ? 'gallery-mode' : ''}`}
-      style={{ '--sidebar-width': `${sidebarWidth}px` } as CSSProperties}
-    >
-      <Sidebar />
-      <div className="sidebar-resizer" onPointerDown={startSidebarResize} title="拖动调整会话区宽度" />
-      {view === 'gallery' ? (
-        <GalleryPage />
-      ) : view === 'prompts' ? (
-        <PromptLibraryPage />
-      ) : (
-        <Workspace
-          activeConversationGenerating={activeConversationGenerating}
-          activeConversationStartedAt={activeConversationStartedAt}
-          generationClockMs={generationClockMs}
-        />
-      )}
-      {settingsVisible && isWorkspaceView ? <SettingsPanel /> : null}
+    <main className={`main drawer-${drawer}`}>
+      <div className="stage">
+        <button
+          className="edge-handle left"
+          title={drawer === 'sessions' ? '收起会话' : '展开会话'}
+          onClick={toggleSessionsDrawer}
+        >
+          <ChevronRight size={15} />
+        </button>
+
+        <aside className={`drawer left ${drawer === 'sessions' ? 'open' : ''}`}>
+          <Sidebar />
+        </aside>
+
+        <div className="canvas-wrap">
+          {view === 'gallery' ? (
+            <GalleryPage />
+          ) : view === 'prompts' ? (
+            <PromptLibraryPage />
+          ) : (
+            <Workspace
+              activeConversationGenerating={activeConversationGenerating}
+              activeConversationStartedAt={activeConversationStartedAt}
+              generationClockMs={generationClockMs}
+            />
+          )}
+        </div>
+
+        <button
+          className="edge-handle right"
+          title={drawer === 'params' ? '收起参数' : '展开参数'}
+          onClick={toggleParamsDrawer}
+        >
+          <ChevronLeft size={15} />
+        </button>
+
+        <aside className={`drawer right ${drawer === 'params' ? 'open' : ''}`}>
+          <SettingsPanel />
+        </aside>
+      </div>
     </main>
   )
 }

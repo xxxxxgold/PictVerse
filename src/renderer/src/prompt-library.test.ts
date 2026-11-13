@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  PROMPT_LIBRARY_STORAGE_KEY,
+  PROMPT_TEMPLATE_ANY_MODEL,
   clonePromptTemplate,
   createEmptyPromptTemplateInput,
   createPromptLibraryItem,
@@ -7,6 +9,7 @@ import {
   filterPromptTemplates,
   getPromptLibraryItems,
   getPromptTemplateCategories,
+  getPromptTemplateModels,
   PROMPT_TEMPLATES,
   updatePromptLibraryItem
 } from './prompt-library'
@@ -52,7 +55,8 @@ describe('prompt library', () => {
       '空间设计',
       '食物摄影',
       '电影封面',
-      'UI 视觉'
+      'UI 视觉',
+      '角色设计'
     ])
   })
 
@@ -62,7 +66,15 @@ describe('prompt library', () => {
     expect(filterPromptTemplates(PROMPT_TEMPLATES, { quality: 'medium' }).map((template) => template.id)).toEqual([
       'storyboard-grid',
       'infographic-product',
-      'glass-ui-card'
+      'glass-ui-card',
+      'snack-teardown-infographic',
+      'notion-desk-illustration',
+      'ios-photos-mockup',
+      'character-card-knight',
+      'character-card-assassin',
+      'character-card-medic',
+      'character-card-qipao',
+      'felted-lockscreen'
     ])
   })
 
@@ -70,6 +82,33 @@ describe('prompt library', () => {
     const template = PROMPT_TEMPLATES[0]
     expect(template.prompt).toContain('奢华腕表广告海报')
     expect(template.resolution).toBe('1024x1024')
+  })
+
+  it('filters by model and treats empty model as follow-conversation', () => {
+    const templates = [
+      { ...PROMPT_TEMPLATES[0], id: 'pinned', model: 'qwen-image-2.1' },
+      { ...PROMPT_TEMPLATES[1], id: 'follow', model: '' }
+    ]
+
+    expect(filterPromptTemplates(templates, { model: 'qwen-image-2.1' }).map((item) => item.id)).toEqual(['pinned'])
+    expect(filterPromptTemplates(templates, { model: PROMPT_TEMPLATE_ANY_MODEL }).map((item) => item.id)).toEqual(['follow'])
+    expect(filterPromptTemplates(templates, { model: 'all' }).map((item) => item.id)).toEqual(['pinned', 'follow'])
+  })
+
+  it('collects model choices and matches them in search', () => {
+    const templates = [
+      { ...PROMPT_TEMPLATES[0], model: 'qwen-image-2.1' },
+      { ...PROMPT_TEMPLATES[1], model: 'qwen-image-2.1' },
+      { ...PROMPT_TEMPLATES[2], model: '' }
+    ]
+
+    expect(getPromptTemplateModels(templates)).toEqual(['qwen-image-2.1'])
+    expect(filterPromptTemplates(templates, { query: 'qwen-image-2.1' })).toHaveLength(2)
+  })
+
+  it('defaults new templates to follow-conversation and keeps model through clone', () => {
+    expect(createEmptyPromptTemplateInput().model).toBe('')
+    expect(clonePromptTemplate({ ...PROMPT_TEMPLATES[0], model: 'moss' }).model).toBe('moss')
   })
 
   it('supports create update and delete operations for templates', () => {
@@ -101,6 +140,29 @@ describe('prompt library', () => {
 
     deletePromptLibraryItem(created.id)
     expect(getPromptLibraryItems().some((item) => item.id === created.id)).toBe(false)
+  })
+
+  it('merges missing builtin templates for users on an older seed version', () => {
+    window.localStorage.clear()
+    // 模拟老用户：库里只有第一版 12 条内置模板 + 一条自建，且种子版本标记为 1
+    const legacy = PROMPT_TEMPLATES.filter((template) => !template.id.includes('infographic') || template.id === 'infographic-product')
+    const first12 = PROMPT_TEMPLATES.slice(0, 12)
+    void legacy
+    window.localStorage.setItem(PROMPT_LIBRARY_STORAGE_KEY, JSON.stringify(first12))
+    window.localStorage.setItem('pictverse.prompt-library.seed-version', '1')
+
+    const items = getPromptLibraryItems()
+
+    // 16 条新增内置模板被补齐，且不重复
+    const ids = items.map((item) => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (const builtin of PROMPT_TEMPLATES) {
+      expect(ids).toContain(builtin.id)
+    }
+    // 种子版本被推进到当前值，再次读取不会再变
+    expect(window.localStorage.getItem('pictverse.prompt-library.seed-version')).toBe('2')
+    const again = getPromptLibraryItems()
+    expect(again.map((item) => item.id)).toEqual(ids)
   })
 })
 

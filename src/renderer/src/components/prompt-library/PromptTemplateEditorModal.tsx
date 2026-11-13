@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { X } from 'lucide-react'
 import type { PromptTemplate, PromptTemplateInput } from '@renderer/prompt-library'
-import { IMAGE_QUALITIES, formatImageQuality, getDefaultImageSize, getImageSizeOptions } from '@shared/image-options'
+import { IMAGE_QUALITIES_EXTENDED, formatImageQuality, getDefaultImageSize, getImageSizeOptions } from '@shared/image-options'
 import { GallerySelect, type GallerySelectOption } from '@renderer/components/gallery/GallerySelect'
 import { EditableMultiSelect, EditableSelect } from '@renderer/components/common/EditableSelect'
 
@@ -18,7 +18,7 @@ const ratioOptions: Array<GallerySelectOption<PromptTemplate['ratio']>> = [
   { value: '9:21', label: '9:21' }
 ]
 
-const qualityOptions: Array<GallerySelectOption<PromptTemplate['quality']>> = IMAGE_QUALITIES.map((quality) => ({
+const qualityOptions: Array<GallerySelectOption<PromptTemplate['quality']>> = IMAGE_QUALITIES_EXTENDED.map((quality) => ({
   value: quality,
   label: formatImageQuality(quality)
 }))
@@ -28,6 +28,7 @@ export function PromptTemplateEditorModal({
   title,
   categoryOptions,
   tagOptions,
+  modelOptions = [],
   onSave,
   onClose
 }: {
@@ -35,6 +36,8 @@ export function PromptTemplateEditorModal({
   title: string
   categoryOptions: string[]
   tagOptions: string[]
+  /** 可选生图模型；留空表示套用时跟随当前会话 */
+  modelOptions?: string[]
   onSave: (value: PromptTemplateInput) => Promise<void> | void
   onClose: () => void
 }): JSX.Element {
@@ -61,6 +64,10 @@ export function PromptTemplateEditorModal({
   const suggestedCategories = useMemo(
     () => Array.from(new Set(categoryOptions.map((item) => item.trim()).filter(Boolean))),
     [categoryOptions]
+  )
+  const suggestedModels = useMemo(
+    () => Array.from(new Set(modelOptions.map((item) => item.trim()).filter(Boolean))),
+    [modelOptions]
   )
   const resolutionOptions = useMemo(() => getImageSizeOptions(form.ratio), [form.ratio])
 
@@ -158,16 +165,28 @@ export function PromptTemplateEditorModal({
               {errors.category ? <span className="field-error">{errors.category}</span> : null}
             </div>
             <div className="field">
-              <span>标签</span>
-              <EditableMultiSelect
-                values={form.tags}
-                options={suggestedTags}
-                ariaLabel="标签多选"
-                placeholder="输入标签并回车，或从下拉中选择"
+              <span>生图模型</span>
+              <EditableSelect
+                value={form.model}
+                options={suggestedModels}
+                ariaLabel="生图模型"
+                placeholder="留空则跟随当前会话"
                 allowCreate
-                onChange={(tags) => setForm((current) => ({ ...current, tags }))}
+                onChange={(model) => setForm((current) => ({ ...current, model }))}
               />
+              <span className="field-hint">{form.model.trim() ? '套用时会切换会话模型' : '套用时沿用当前会话模型'}</span>
             </div>
+          </div>
+          <div className="field">
+            <span>标签</span>
+            <EditableMultiSelect
+              values={form.tags}
+              options={suggestedTags}
+              ariaLabel="标签多选"
+              placeholder="输入标签并回车，或从下拉中选择"
+              allowCreate
+              onChange={(tags) => setForm((current) => ({ ...current, tags }))}
+            />
           </div>
           <label className="field">
             <span>说明</span>

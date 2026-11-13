@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { formatDuration } from '@shared/duration'
-import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize } from '@shared/image-options'
+import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, getOutputFormatsFor, resolveModelCapabilities } from '@shared/image-options'
+import { resolveActiveProvider } from '@shared/provider-selection'
 import type {
+  Provider,
+  ProviderInput,
   Conversation,
   ConversationCreateInput,
   ConversationUpdate,
@@ -9,6 +12,7 @@ import type {
   GenerationRun,
   HistoryListOptions,
   ImageHistoryItem,
+  ImageOutputFormat,
   ProviderSettings,
   ProviderSettingsUpdate
 } from '@shared/types'
@@ -22,6 +26,20 @@ import {
 import type { PromptTemplate } from '../prompt-library'
 
 type View = 'workspace' | 'gallery' | 'prompts'
+
+const PROMPT_ASSISTANT_STORAGE_KEY = 'pictverse-assistant-config'
+
+/** 读取提示词助手本地配置；字段缺失时走主进程的全局回填 */
+function readPromptAssistantConfig(): Record<string, unknown> | undefined {
+  try {
+    const raw = window.localStorage.getItem(PROMPT_ASSISTANT_STORAGE_KEY)
+    if (!raw) return undefined
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined
+  } catch {
+    return undefined
+  }
+}
 
 function normalizeConversationInteger(value: number | null | undefined, min: number, max: number): number | undefined {
   if (value === null || value === undefined) return undefined
@@ -39,9 +57,35 @@ function normalizeConversationOptionalInteger(
   return Math.min(max, Math.max(min, Math.trunc(value)))
 }
 
+/**
+ * 当目标模型/供应商不支持当前输出格式时，返回应回落到的格式；否则返回 undefined（不改动）。
+ * 供所有会改动 model 或 providerId 的入口复用，避免各路径判断不一致。
+ * 供应商解析统一走 resolveActiveProvider，与 UI 侧保持同一口径。
+ */
+function resolveAllowedOutputFormat(
+  model: string,
+  providerId: string | null,
+  currentFormat: ImageOutputFormat | null | undefined,
+  providers: Provider[]
+): ImageOutputFormat | undefined {
+  if (!currentFormat) return undefined
+  const provider = resolveActiveProvider(providerId, providers)
+  const allowed = getOutputFormatsFor(model, provider)
+  return allowed.includes(currentFormat) ? undefined : DEFAULT_IMAGE_OUTPUT_FORMAT
+}
+
+export type PendingMask = {
+  dataUrl: string
+  previewUrl: string
+  referenceId: string
+}
+
 type AppState = {
   view: View
   settingsVisible: boolean
+  drawer: 'none' | 'sessions' | 'params'
+  settingsModalOpen: boolean
+  pendingMask: PendingMask | null
   darkMode: boolean
   settings: ProviderSettings | null
   conversations: Conversation[]
@@ -58,11 +102,18 @@ type AppState = {
   removedGenerationIndexesByRunId: Record<string, number[]>
   promptAssistantRunning: { inspire: boolean; enrich: boolean }
   toast: string | null
+  providers: Provider[]
+  activeProviderId: string | null
   getConversationGenerationState: (conversationId: string) => { generating: boolean; startedAt: number | null; activeCount: number }
   load: () => Promise<void>
   setView: (view: View) => void
   toggleSettings: () => void
   toggleTheme: () => void
+  setDrawer: (drawer: 'none' | 'sessions' | 'params') => void
+  setSettingsModalOpen: (open: boolean) => void
+  setPendingMask: (mask: PendingMask | null) => void
+  toggleSessionsDrawer: () => void
+  toggleParamsDrawer: () => void
   setQuery: (query: string) => void
   setSort: (sort: 'newest' | 'oldest') => Promise<void>
   setFavoritesOnly: (favoritesOnly: boolean) => Promise<void>
@@ -89,6 +140,12 @@ type AppState = {
   retryHistory: (item: ImageHistoryItem) => Promise<void>
   reuseHistory: (item: ImageHistoryItem) => Promise<void>
   notify: (message: string | null) => void
+  loadProviders: () => Promise<void>
+  saveProvider: (input: ProviderInput, id?: string) => Promise<void>
+  deleteProvider: (id: string) => Promise<void>
+  makeProviderDefault: (id: string) => Promise<void>
+  fetchProviderModels: (id: string) => Promise<string[]>
+  saveProviderModels: (id: string, modelIds: string[]) => Promise<void>
 }
 
 let generationClockTimer: number | null = null
@@ -114,6 +171,9 @@ function collectRunningRunIds(runsByConversation: Record<string, GenerationRun[]
 export const useAppStore = create<AppState>((set, get) => ({
   view: 'workspace',
   settingsVisible: true,
+  drawer: 'none',
+  settingsModalOpen: false,
+  pendingMask: null,
   darkMode: false,
   settings: null,
   conversations: [],
@@ -130,6 +190,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   removedGenerationIndexesByRunId: {},
   promptAssistantRunning: { inspire: false, enrich: false },
   toast: null,
+  providers: [],
+  activeProviderId: null,
   getConversationGenerationState: (conversationId) =>
     getConversationGenerationStateForId(conversationId, get().generatingByConversation, get().generationStartedAtByConversation),
   load: async () => {
@@ -141,12 +203,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       const activeConversationId = get().activeConversationId || conversations[0]?.id || null
       const runs = activeConversationId ? await window.pictverse.conversation.runs(activeConversationId) : []
       const history = await window.pictverse.history.list({ sort: get().sort })
+      const providers = await window.pictverse.provider.list()
+      const providerList = providers.length
+        ? providers
+        : [await window.pictverse.provider.create({
+            name: 'OpenAI 官方',
+            baseURL: settings.baseURL || 'https://api.openai.com',
+            defaultModel: settings.defaultModel || DEFAULT_MODEL,
+            promptModel: settings.promptModel || null,
+            isDefault: true
+          })]
+      await get().loadProviders()
+      const activeProviderIdValue = providerList.find((item) => item.isDefault)?.id || providerList[0]?.id || null
       set({
         settings,
         conversations,
         activeConversationId,
         runsByConversation: activeConversationId ? { [activeConversationId]: runs } : {},
         history,
+        activeProviderId: get().activeProviderId || activeProviderIdValue,
         loading: false
       })
     } catch (error) {
@@ -158,6 +233,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setView: (view) => set({ view }),
   toggleSettings: () => set((state) => ({ settingsVisible: !state.settingsVisible, view: 'workspace' })),
   toggleTheme: () => set((state) => ({ darkMode: !state.darkMode })),
+  setDrawer: (drawer) => set({ drawer }),
+  setSettingsModalOpen: (open) => set({ settingsModalOpen: open }),
+  setPendingMask: (mask) => set({ pendingMask: mask }),
+  toggleSessionsDrawer: () => set((state) => ({ drawer: state.drawer === 'sessions' ? 'none' : 'sessions' })),
+  toggleParamsDrawer: () => set((state) => ({ drawer: state.drawer === 'params' ? 'none' : 'params' })),
   setQuery: (query) => set({ query }),
   setSort: async (sort) => {
     set({ sort })
@@ -255,6 +335,46 @@ export const useAppStore = create<AppState>((set, get) => ({
       normalizedBase.ratio !== undefined && normalizedBase.size === undefined
         ? { ...normalizedBase, size: getDefaultImageSize(normalizedBase.ratio) }
         : normalizedBase
+
+    // 任何一次会话更新都会校验格式与遮罩能力（不只是改 model/providerId 时），
+    // 这样供应商配置在设置页被改掉后，用户随手碰一次参数即可自愈，脏数据也能被纠正。
+    const currentConversation = get().conversations.find((item) => item.id === id)
+    if (currentConversation) {
+      const nextModel = normalized.model ?? currentConversation.model
+      const providers = get().providers
+      const notices: string[] = []
+
+      const nextFormat = resolveAllowedOutputFormat(
+        nextModel,
+        normalized.providerId ?? currentConversation.providerId,
+        normalized.outputFormat ?? currentConversation.outputFormat,
+        providers
+      )
+      if (nextFormat !== undefined) {
+        // 静默改值会让用户以为「点了没反应」，明确告知回落原因
+        const previousFormat = normalized.outputFormat ?? currentConversation.outputFormat
+        normalized.outputFormat = nextFormat
+        if (previousFormat && previousFormat !== nextFormat) {
+          notices.push(`已从 ${previousFormat.toUpperCase()} 改用 ${nextFormat.toUpperCase()}（当前模型不支持）`)
+        }
+      }
+
+      // 遮罩同理：能力被关闭时，已涂抹的遮罩不能继续随请求发出（会在上游 400）
+      if (get().pendingMask) {
+        const maskStillSupported = resolveModelCapabilities(
+          nextModel,
+          resolveActiveProvider(normalized.providerId ?? currentConversation.providerId, providers)
+        ).mask
+        if (!maskStillSupported) {
+          set({ pendingMask: null })
+          notices.push('已清除已应用的遮罩（当前模型不支持遮罩）')
+        }
+      }
+
+      // toast 是单值字段，多条提示必须合并，否则后者会覆盖前者
+      if (notices.length > 0) get().notify(notices.join('；'))
+    }
+
     const draftPromptOnly = Object.keys(normalized).length === 1 && Object.prototype.hasOwnProperty.call(normalized, 'draftPrompt')
     set({
       conversations: get().conversations.map((item) =>
@@ -342,12 +462,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   applyPromptTemplate: async (template) => {
     const state = get()
     let conversation = state.conversations.find((item) => item.id === state.activeConversationId) || null
+    const templateModel = template.model?.trim() || ''
     if (!conversation) {
       await get().createConversation(
         {
           ratio: template.ratio,
           size: template.resolution || getDefaultImageSize(template.ratio),
-          quality: template.quality
+          quality: template.quality,
+          model: templateModel || undefined
         },
         { silent: true }
       )
@@ -360,6 +482,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       ratio: template.ratio,
       size: template.resolution || getDefaultImageSize(template.ratio),
       quality: template.quality
+    }
+    if (templateModel) {
+      patch.model = templateModel
     }
     if (conversation.title === '新会话') {
       patch.title = template.title
@@ -374,7 +499,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!conversation || get().promptAssistantRunning.inspire) return
     set({ promptAssistantRunning: { ...get().promptAssistantRunning, inspire: true } })
     try {
-      const prompt = await window.pictverse.prompt.inspire({ hasReferenceImages: conversation.referenceImages.length > 0 })
+      const prompt = await window.pictverse.prompt.inspire({
+        hasReferenceImages: conversation.referenceImages.length > 0,
+        config: readPromptAssistantConfig()
+      })
       const updated = await window.pictverse.conversation.update(conversation.id, { draftPrompt: prompt })
       set({
         conversations: get().conversations.map((item) => (item.id === conversation.id ? updated : item))
@@ -394,7 +522,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const prompt = await window.pictverse.prompt.enrich({
         prompt: currentPrompt,
-        hasReferenceImages: conversation.referenceImages.length > 0
+        hasReferenceImages: conversation.referenceImages.length > 0,
+        config: readPromptAssistantConfig()
       })
       const updated = await window.pictverse.conversation.update(conversation.id, { draftPrompt: prompt })
       set({
@@ -415,10 +544,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ generationClockMs: generationStartedAt })
     startGenerationClock()
     const prompt = conversation.draftPrompt.trim()
+    // 与下方 input.model 的取值口径保持一致，避免空模型时两处判定不同
+    const effectiveModel = conversation.model || state.settings?.defaultModel || DEFAULT_MODEL
+    const maskSupported = resolveModelCapabilities(
+      effectiveModel,
+      resolveActiveProvider(conversation.providerId, state.providers)
+    ).mask
+    // 丢弃遮罩时必须清状态，否则界面仍显示「遮罩已应用」而请求里没有遮罩
+    if (!maskSupported && state.pendingMask) {
+      set({ pendingMask: null })
+      get().notify('已清除已应用的遮罩（当前模型不支持遮罩）')
+    }
     const input: GenerateImageInput = {
       conversationId: conversation.id,
       prompt,
-      model: conversation.model || state.settings?.defaultModel || DEFAULT_MODEL,
+      model: effectiveModel,
       ratio: conversation.ratio,
       size: conversation.size || getDefaultImageSize(conversation.ratio),
       quality: conversation.quality,
@@ -430,6 +570,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       partialImages: conversation.partialImages ?? undefined,
       inputFidelity: conversation.inputFidelity ?? undefined,
       outputFormat: conversation.outputFormat || DEFAULT_IMAGE_OUTPUT_FORMAT,
+      complexity: conversation.complexity ?? undefined,
+      frameCount: conversation.frameCount ?? undefined,
+      frameDurationMs: conversation.frameDurationMs ?? undefined,
+      seed: conversation.seedLocked ? conversation.seed ?? undefined : undefined,
+      providerId: conversation.providerId ?? undefined,
+      // 遮罩能力复核（上方已在不支持时清空 pendingMask，这里取的是清空后的值）
+      maskPngBase64: state.pendingMask?.dataUrl ?? undefined,
       referenceImageIds: conversation.referenceImages.map((reference) => reference.id)
     }
     const nextGenerationState = beginConversationGeneration(conversation.id, {
@@ -714,17 +861,85 @@ export const useAppStore = create<AppState>((set, get) => ({
       id = get().activeConversationId
     }
     if (!id) return
+    // 历史记录可能来自不同模型，回填时同样要保证输出格式与目标模型兼容
+    const targetConversation = get().conversations.find((item) => item.id === id)
+    const fallbackFormat = resolveAllowedOutputFormat(
+      item.model,
+      targetConversation?.providerId ?? null,
+      targetConversation?.outputFormat,
+      get().providers
+    )
     await window.pictverse.conversation.update(id, {
       draftPrompt: item.prompt,
       model: item.model,
       ratio: item.ratio,
       size: item.size || getDefaultImageSize(item.ratio),
-      quality: item.quality
+      quality: item.quality,
+      ...(fallbackFormat ? { outputFormat: fallbackFormat } : {})
     })
     const conversations = await window.pictverse.conversation.list()
     const runs = await window.pictverse.conversation.runs(id)
     set({ conversations, activeConversationId: id, runsByConversation: { ...get().runsByConversation, [id]: runs }, view: 'workspace' })
     get().notify('已回填到当前会话')
+  },
+  loadProviders: async () => {
+    try {
+      const providers = await window.pictverse.provider.list()
+      set({
+        providers,
+        activeProviderId: get().activeProviderId || providers.find((item) => item.isDefault)?.id || providers[0]?.id || null
+      })
+    } catch (error) {
+      console.error('[PictVerse] 供应商加载失败：', error)
+    }
+  },
+  saveProvider: async (input, id) => {
+    try {
+      const saved = id
+        ? await window.pictverse.provider.update(id, input)
+        : await window.pictverse.provider.create(input)
+      await get().loadProviders()
+      set({ activeProviderId: saved.id })
+      get().notify(id ? '供应商已更新' : '供应商已创建')
+    } catch (error) {
+      get().notify(error instanceof Error ? `保存失败：${error.message}` : '保存失败')
+    }
+  },
+  deleteProvider: async (id) => {
+    try {
+      await window.pictverse.provider.remove(id)
+      await get().loadProviders()
+      get().notify('供应商已删除')
+    } catch (error) {
+      get().notify(error instanceof Error ? `删除失败：${error.message}` : '删除失败')
+    }
+  },
+  makeProviderDefault: async (id) => {
+    try {
+      await window.pictverse.provider.setDefault(id)
+      await get().loadProviders()
+      get().notify('已设为默认供应商')
+    } catch (error) {
+      get().notify(error instanceof Error ? `设置失败：${error.message}` : '设置失败')
+    }
+  },
+  fetchProviderModels: async (id) => {
+    try {
+      const models = await window.pictverse.provider.fetchModels(id)
+      get().notify(`获取到 ${models.length} 个模型`)
+      return models
+    } catch (error) {
+      get().notify(error instanceof Error ? `获取模型失败：${error.message}` : '获取模型失败')
+      return []
+    }
+  },
+  saveProviderModels: async (id, modelIds) => {
+    try {
+      await window.pictverse.provider.saveModels(id, modelIds)
+      get().notify('模型列表已保存')
+    } catch (error) {
+      get().notify(error instanceof Error ? `保存模型失败：${error.message}` : '保存模型失败')
+    }
   },
   notify: (message) => {
     set({ toast: message })

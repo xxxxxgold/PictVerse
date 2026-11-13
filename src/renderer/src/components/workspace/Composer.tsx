@@ -1,9 +1,12 @@
 import { useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type JSX } from 'react'
-import { GripVertical, ImagePlus, Lightbulb, Sparkles, Trash2, Wand2, X } from 'lucide-react'
+import { Brush, GripVertical, History, ImagePlus, Lightbulb, Sparkles, Trash2, Wand2, X } from 'lucide-react'
 import type { Conversation } from '@shared/types'
-import { formatImageSize } from '@shared/image-options'
 import { useAppStore } from '@renderer/store/app-store'
+import { formatImageSize, getModelCapabilities, resolveModelCapabilities } from '@shared/image-options'
+import { resolveActiveProvider } from '@shared/provider-selection'
 import { ReferencePreviewModal } from '@renderer/components/preview/ReferencePreviewModal'
+import { HistoryPromptsModal } from './HistoryPromptsModal'
+import { MaskEditor } from './MaskEditor'
 
 export function Composer({ conversation, generating }: { conversation: Conversation; generating: boolean }): JSX.Element {
   const {
@@ -22,6 +25,13 @@ export function Composer({ conversation, generating }: { conversation: Conversat
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const [previewReferenceId, setPreviewReferenceId] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [maskTargetId, setMaskTargetId] = useState<string | null>(null)
+  const pendingMask = useAppStore((state) => state.pendingMask)
+  const setPendingMask = useAppStore((state) => state.setPendingMask)
+  const providers = useAppStore((state) => state.providers)
+  const activeProvider = resolveActiveProvider(conversation.providerId, providers)
+  const maskEnabled = resolveModelCapabilities(conversation.model, activeProvider).mask
   const referenceCount = conversation.referenceImages.length
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -97,8 +107,21 @@ export function Composer({ conversation, generating }: { conversation: Conversat
             <Sparkles size={13} />
             {referenceCount > 0 ? `图生图 · ${referenceCount} 张参考图` : '文生图'}
           </span>
-          <span className="pill blue">{formatImageSize(conversation.size)}</span>
-          <span className="pill">已保存</span>
+          <span className="pill" title="输出尺寸">{formatImageSize(conversation.size)}</span>
+          <span className="pill" title="质量">{conversation.quality || 'auto'}</span>
+          <span className="pill" title="张数">×{conversation.n ?? 1}</span>
+          <span className="pill" title="输出格式">{(conversation.outputFormat || 'png').toUpperCase()}</span>
+
+          {pendingMask ? (
+            <button
+              type="button"
+              className="pill warn"
+              title="点击清除遮罩"
+              onClick={() => setPendingMask(null)}
+            >
+              遮罩已应用
+            </button>
+          ) : null}
         </div>
         <div className="composer-actions">
           <button
@@ -118,6 +141,32 @@ export function Composer({ conversation, generating }: { conversation: Conversat
           >
             <Sparkles size={14} />
             <span>{promptAssistantRunning.enrich ? '丰富中' : '丰富提示词'}</span>
+          </button>
+          <button
+            type="button"
+            className="prompt-assist-button"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History size={14} />
+            <span>历史提示词</span>
+          </button>
+          <button
+            type="button"
+            className="prompt-assist-button"
+            disabled={!maskEnabled || referenceCount === 0}
+            title={
+              !maskEnabled
+                ? getModelCapabilities(conversation.model)
+                  ? '供应商设置已强制关闭遮罩，可在设置里改为跟随模型'
+                  : '当前模型不支持遮罩，可在设置里强制开启'
+                : referenceCount === 0
+                  ? '先添加参考图才能编辑遮罩'
+                  : '在参考图上涂抹遮罩'
+            }
+            onClick={() => setMaskTargetId(conversation.referenceImages[0]?.id ?? null)}
+          >
+            <Brush size={14} />
+            <span>遮罩</span>
           </button>
           <button className="clear-prompt-button" type="button" onClick={() => void clearComposer()}>
             <X size={15} />
@@ -139,7 +188,7 @@ export function Composer({ conversation, generating }: { conversation: Conversat
             {conversation.referenceImages.map((reference, index) => (
               <div
                 key={reference.id}
-                className="reference-chip"
+                className={`reference-chip${pendingMask?.referenceId === reference.id ? ' has-mask' : ''}`}
                 draggable
                 role="button"
                 tabIndex={0}
@@ -181,6 +230,15 @@ export function Composer({ conversation, generating }: { conversation: Conversat
               >
                 <GripVertical size={13} />
                 <img draggable={false} src={window.pictverse.reference.url(reference.id)} alt={reference.name} />
+                {pendingMask?.referenceId === reference.id ? (
+                  <img
+                    className="reference-mask-preview"
+                    draggable={false}
+                    src={pendingMask.previewUrl}
+                    alt="遮罩范围"
+                    title="遮罩范围（青色为需要重绘的区域）"
+                  />
+                ) : null}
                 <button
                   type="button"
                   title="删除参考图"
@@ -221,6 +279,17 @@ export function Composer({ conversation, generating }: { conversation: Conversat
           initialId={previewReferenceId}
           references={conversation.referenceImages}
           onClose={() => setPreviewReferenceId(null)}
+        />
+      ) : null}
+      {historyOpen ? <HistoryPromptsModal onClose={() => setHistoryOpen(false)} /> : null}
+      {maskTargetId ? (
+        <MaskEditor
+          references={conversation.referenceImages}
+          onClose={() => setMaskTargetId(null)}
+          onApply={(maskPngBase64) => {
+            setPendingMask(maskPngBase64)
+            setMaskTargetId(null)
+          }}
         />
       ) : null}
     </form>

@@ -1,11 +1,40 @@
 import type { JSX } from 'react'
-import { BookOpen, Image as ImageIcon, PanelRightClose, PanelRightOpen, PencilLine, Plus } from 'lucide-react'
+import {
+  BookOpen,
+  Image as ImageIcon,
+  Moon,
+  PencilLine,
+  Plus,
+  Settings,
+  Sun
+} from 'lucide-react'
 import { useAppStore } from '@renderer/store/app-store'
+import { resolveActiveProvider } from '@shared/provider-selection'
 import logoUrl from '@renderer/assets/icon.png'
 
+function hostOf(baseURL: string | undefined): string {
+  if (!baseURL) return '未配置'
+  return baseURL.replace(/^https?:\/\//, '').split('/')[0] || '未配置'
+}
+
 export function Topbar(): JSX.Element {
-  const { settings, settingsVisible, view, setView, toggleSettings, createConversation } = useAppStore()
-  const endpoint = `${settings?.baseURL || 'https://api.openai.com'}/v1/images/generations`
+  const {
+    settings,
+    conversations,
+    activeConversationId,
+    darkMode,
+    view,
+    setView,
+    toggleTheme,
+    createConversation,
+    setSettingsModalOpen,
+    providers
+  } = useAppStore()
+
+  const conversation = conversations.find((item) => item.id === activeConversationId) || null
+  const activeProvider = resolveActiveProvider(conversation?.providerId, providers)
+  const host = hostOf(activeProvider?.baseURL || settings?.baseURL)
+  const model = conversation?.model || settings?.defaultModel || '未选择'
 
   return (
     <header className="topbar">
@@ -13,37 +42,55 @@ export function Topbar(): JSX.Element {
         <div className="logo">
           <img src={logoUrl} alt="绘世" />
         </div>
-        <div>
-          <h1>绘世</h1>
+        <b>绘世</b>
+        <span className={settings?.apiKeyStored ? 'live' : 'live warn'} />
+      </div>
+
+      <div className="param-tags">
+        <div className="ptag accent" title={`${host} · ${model}`}>
+          <span className="dot" />
+          <span className="k">供应商</span>
+          <b>{host}</b>
+          <span className="k">·</span>
+          <b>{model}</b>
+        </div>
+        <div className="ptag saved" title="参数已自动保存">
+          <b>已保存</b>
         </div>
       </div>
-      <div className="endpoint">
-        <span className={settings?.apiKeyStored ? 'dot good' : 'dot warn'} />
-        <span>{settings?.apiKeyStored ? '接口已配置' : '等待配置 API Key'}</span>
-        <code>{endpoint}</code>
-      </div>
-      <div className="top-actions">
-        <button onClick={toggleSettings} title={settingsVisible ? '隐藏设置区' : '显示设置区'}>
-          {settingsVisible ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-          设置
-        </button>
-        <button className={view === 'workspace' ? 'active-soft' : ''} onClick={() => setView('workspace')}>
-          <PencilLine size={16} />
-          工作台
-        </button>
-        <button className={view === 'gallery' ? 'active-soft' : ''} onClick={() => setView('gallery')}>
-          <ImageIcon size={16} />
-          图库
-        </button>
-        <button className={view === 'prompts' ? 'active-soft' : ''} onClick={() => setView('prompts')}>
-          <BookOpen size={16} />
-          提示词库
-        </button>
-        <button className="primary" onClick={() => void createConversation()}>
-          <Plus size={16} />
-          新建会话
-        </button>
-      </div>
+
+      <div className="spacer" />
+
+      <button
+        className={`icon-btn ${view === 'gallery' ? 'on' : ''}`}
+        title="图库"
+        onClick={() => setView('gallery')}
+      >
+        <ImageIcon size={17} />
+      </button>
+      <button
+        className={`icon-btn ${view === 'prompts' ? 'on' : ''}`}
+        title="提示词库"
+        onClick={() => setView('prompts')}
+      >
+        <BookOpen size={17} />
+      </button>
+      <button className={`icon-btn ${view === 'workspace' ? 'on' : ''}`} title="首页工作台" onClick={() => setView('workspace')}>
+        <PencilLine size={17} />
+      </button>
+
+      <span className="topbar-divider" aria-hidden="true" />
+
+      <button className="icon-btn" title="设置" onClick={() => setSettingsModalOpen(true)}>
+        <Settings size={17} />
+      </button>
+      <button className="icon-btn" title={darkMode ? '切换到浅色' : '切换到深色'} onClick={toggleTheme}>
+        {darkMode ? <Moon size={17} /> : <Sun size={17} />}
+      </button>
+      <button className="btn-primary" onClick={() => void createConversation()}>
+        <Plus size={15} />
+        新建会话
+      </button>
     </header>
   )
 }
