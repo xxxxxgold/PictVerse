@@ -27,7 +27,7 @@ import {
 } from '@shared/prompt-assistant'
 import { resolveModelCapabilities } from '@shared/image-options'
 
-type TabKey = 'providers' | 'assistant' | 'keys' | 'about'
+type TabKey = 'providers' | 'storage' | 'assistant' | 'keys' | 'about'
 
 type AssistantConfig = PromptAssistConfig
 
@@ -68,6 +68,7 @@ function readAssistantConfig(): AssistantConfig {
 
 const tabs: Array<{ key: TabKey; label: string; icon: JSX.Element }> = [
   { key: 'providers', label: '供应商', icon: <Boxes size={15} /> },
+  { key: 'storage', label: '存储', icon: <FolderOpen size={15} /> },
   { key: 'assistant', label: '提示词助手', icon: <Sparkles size={15} /> },
   { key: 'keys', label: '快捷键', icon: <Keyboard size={15} /> },
   { key: 'about', label: '关于', icon: <Info size={15} /> }
@@ -289,41 +290,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                   </label>
                 </div>
               </div>
-                  {window.pictverse.settings.chooseImagesRoot ? (
-                    <div className="field">
-                      <span>图片存储位置</span>
-                      <div className="input-with-action">
-                        <input
-                          className="input-control"
-                          value={settings?.imagesRootEffective || ''}
-                          placeholder="默认数据目录"
-                          readOnly
-                        />
-                        <button
-                          type="button"
-                          className="input-action"
-                          title="浏览…"
-                          aria-label="选择图片存储位置"
-                          onClick={() => void handleChooseImagesRoot()}
-                        >
-                          <FolderOpen size={14} />
-                        </button>
-                      </div>
-                      <em className="hint-mini">
-                        图片将按会话存入该目录下的子文件夹；更改仅对新图片生效
-                        {settings?.imagesRoot ? (
-                          <button
-                            type="button"
-                            className="ghost"
-                            title="恢复默认目录"
-                            onClick={() => void handleResetImagesRoot()}
-                          >
-                            <RotateCcw size={12} /> 恢复默认
-                          </button>
-                        ) : null}
-                      </em>
-                    </div>
-                  ) : null}
 
               <div className="provlist">
                 {providers.map((item) => (
@@ -595,6 +561,52 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
               ) : (
                 <div className="empty-state">还没有供应商，先新增一个</div>
               )}
+            </div>
+          ) : null}
+
+          {tab === 'storage' ? (
+            <div className="sbody on">
+              <h2>存储</h2>
+              <p className="sub">图片文件的存放位置与目录组织</p>
+              <div className="provider">
+                {window.pictverse.settings.chooseImagesRoot ? (
+                  <div className="field">
+                    <span>图片存储位置</span>
+                    <div className="input-with-action">
+                      <input
+                        className="input-control"
+                        value={settings?.imagesRootEffective || ''}
+                        placeholder="默认数据目录"
+                        readOnly
+                      />
+                      <button
+                        type="button"
+                        className="input-action"
+                        title="浏览…"
+                        aria-label="选择图片存储位置"
+                        onClick={() => void handleChooseImagesRoot()}
+                      >
+                        <FolderOpen size={14} />
+                      </button>
+                    </div>
+                    <em className="hint-mini">
+                      图片将按会话存入该目录下的子文件夹；更改仅对新图片生效
+                      {settings?.imagesRoot ? (
+                        <button
+                          type="button"
+                          className="ghost"
+                          title="恢复默认目录"
+                          onClick={() => void handleResetImagesRoot()}
+                        >
+                          <RotateCcw size={12} /> 恢复默认
+                        </button>
+                      ) : null}
+                    </em>
+                  </div>
+                ) : (
+                  <div className="empty-state">浏览器版图片保存在浏览器本地数据库中</div>
+                )}
+              </div>
             </div>
           ) : null}
 
