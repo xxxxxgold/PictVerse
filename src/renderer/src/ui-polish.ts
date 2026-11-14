@@ -1,16 +1,19 @@
 /**
  * 界面动效增强（配合 ui-polish.css）
  *
- * 只做两件纯表现的事，不碰业务状态：
+ * 只做三件纯表现的事，不碰业务状态：
  *  1. 指针跟随光斑：把指针相对卡片的坐标写进 --uh-mx / --uh-my，
  *     由 CSS 的 radial-gradient 画出一团跟着鼠标走的高光。
  *  2. 主按钮点击涟漪：点下去在落点扩一圈，补足「按到了」的即时反馈。
+ *  3. 抽屉入场只播一次：第一次展开后打 uh-entered 标记，之后开合不再重放
+ *     子元素的上浮动画（否则每次开合面板内容都会「抖一下」）。
  *
  * 全部挂 passive 监听 + rAF 节流，且尊重系统「减少动画」设置。
  */
 
 const SPOTLIGHT_TARGETS = '.art-card, .prompt-template-card'
 const RIPPLE_TARGETS = '.btn-primary, .primary, .generate-button'
+const ENTER_ONCE_TARGETS = '.drawer'
 
 const prefersReducedMotion = (): boolean =>
   typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -74,7 +77,49 @@ export function installButtonRipple(): () => void {
   return () => document.removeEventListener('click', onClick, true)
 }
 
+/** 抽屉入场动画只播一次：首次展开动画播完就写下标记，之后 .open 不再触发子元素上浮 */
+export function installDrawerEnterOnce(): () => void {
+  const ENTERED_ATTR = 'data-uh-entered'
+
+  const mark = () => {
+    for (const drawer of document.querySelectorAll<HTMLElement>(ENTER_ONCE_TARGETS)) {
+      if (!drawer.classList.contains('open')) continue
+      if (drawer.dataset.uhEntered === '1') continue
+      // 等首次入场动画播完再写标记，避免首帧就被抑制
+      window.setTimeout(() => {
+        // 期间可能已经关掉，这里只要求它曾经打开过
+        drawer.dataset.uhEntered = '1'
+      }, 480)
+    }
+  }
+
+  const observer = new MutationObserver(mark)
+  const bind = () => {
+    for (const drawer of document.querySelectorAll(ENTER_ONCE_TARGETS)) {
+      if (drawer.getAttribute(ENTERED_ATTR) === '1') continue
+      if ((drawer as HTMLElement & { __uhBound?: boolean }).__uhBound) continue
+      ;(drawer as HTMLElement & { __uhBound?: boolean }).__uhBound = true
+      observer.observe(drawer, { attributes: true, attributeFilter: ['class'] })
+    }
+  }
+
+  bind()
+  // 抽屉可能是后挂载的：观察文档结构变化，补挂新节点
+  const bodyObserver = new MutationObserver(() => {
+    bind()
+    mark()
+  })
+  bodyObserver.observe(document.body, { childList: true, subtree: true })
+  // 首帧就处于打开状态的场景
+  mark()
+
+  return () => {
+    observer.disconnect()
+    bodyObserver.disconnect()
+  }
+}
+
 export function installUiPolish(): () => void {
-  const disposers = [installPointerSpotlight(), installButtonRipple()]
+  const disposers = [installPointerSpotlight(), installButtonRipple(), installDrawerEnterOnce()]
   return () => disposers.forEach((dispose) => dispose())
 }

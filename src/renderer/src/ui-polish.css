@@ -350,7 +350,9 @@ html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
 /* 窗口按钮的 hover 语义 styles.css 已经写好了（薄荷底 / 关闭键转红），这里不再覆盖 */
 
 /* ===== 05 抽屉与会话列表 ===== */
-/* 抽屉打开时压暗主区，视线才会落到抽屉里；pointer-events 留给既有的「点外面关闭」逻辑 */
+/* 抽屉打开时压暗主区，视线才会落到抽屉里；pointer-events 留给既有的「点外面关闭」逻辑。
+   这里刻意只用纯色压暗、不加 backdrop-filter：全屏模糊会让 Chromium 每帧重采样整个 backdrop，
+   开合瞬间整块画面会闪一下（用户感知为「抖」）。 */
 .main::before {
   content: "";
   position: absolute;
@@ -358,8 +360,6 @@ html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
   z-index: 15;
   pointer-events: none;
   background: rgba(8, 16, 13, 0.28);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
   opacity: 0;
   transition: opacity var(--uh-dur-3) var(--uh-ease-out);
 }
@@ -375,19 +375,42 @@ html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
 }
 
 .drawer {
-  background: var(--uh-card-strong);
+  /* 抽屉原本是「会移动的毛玻璃」。但它的底色本来就接近不透明，backdrop-filter
+     收益很小，滑动期间却要每帧重采样整个背景 —— 开合瞬间画面会闪一下（用户感知为「抖」）。
+     这里换成实色底 + 独立合成层，同时把重绘范围圈在自身，不再连累背后的画布。 */
+  background: rgba(255, 255, 255, 0.985);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   border-color: var(--uh-hair);
   box-shadow: var(--uh-elev-3), var(--uh-edge);
+  contain: paint;
+  will-change: transform, opacity;
   transition:
     transform 0.46s var(--uh-spring),
     opacity 0.26s var(--uh-ease-out),
     visibility 0.46s;
 }
 
+/* 抽屉关闭时撤掉 will-change，避免长期占用显存 */
+.drawer:not(.open) {
+  will-change: auto;
+}
+
 /* 抽屉内元素依次抬起来，比整块平移更有层次 */
+/*
+ * 注意：这些入场动画只在「首次打开」时播放。抽屉靠 transform 滑入，
+ * 如果每次开合都重放子元素的上浮动画，观感就是面板里所有内容一起抖一下。
+ * 用抽屉上的 data-uh-entered（由 ui-polish.ts 在首次开合后写入，React 不会覆盖
+ * data-* 属性，而 className 每次重渲染都会被重写）来抑制重播。
+ */
 .drawer.open .sidebar > *,
 .drawer.open .inspector > * {
   animation: uh-rise var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+.drawer[data-uh-entered="1"].open .sidebar > *,
+.drawer[data-uh-entered="1"].open .inspector > * {
+  animation: none;
 }
 
 .drawer.open .sidebar > *:nth-child(1),
@@ -1243,7 +1266,7 @@ html.dark .composer {
 
 /* 深色下抽屉与弹窗用近乎不透明的底：半透明叠在压暗的背景上会让次要文字发灰 */
 html.dark .drawer {
-  background: rgba(19, 28, 24, 0.97);
+  background: rgba(19, 28, 24, 0.985);
 }
 
 html.dark .modal-panel,
