@@ -1,0 +1,1389 @@
+/* =============================================================================
+ * ui-polish.css — 界面质感与动效增强层
+ *
+ * 只做「追加」：本文件在 styles.css 之后加载，靠层叠顺序覆盖视觉表现，
+ * 不改任何组件的 DOM 结构与业务逻辑。回退方式：删除本文件与 main.tsx 的 import。
+ *
+ * 章节：
+ *   01 设计变量（抬升阶梯 / 动效曲线 / 玻璃描边）
+ *   02 全局动效基线
+ *   03 背景与景深
+ *   04 顶栏
+ *   05 抽屉与会话列表
+ *   06 Composer
+ *   07 画布与图片卡片
+ *   08 图库与提示词库
+ *   09 弹窗与 Toast
+ *   10 空态
+ *   11 深色主题精修
+ *   12 降级与自适应
+ * ========================================================================== */
+
+/* ===== 01 设计变量 ===== */
+:root {
+  /* 抬升阶梯：越靠上越用于「浮起来」的层 */
+  --uh-elev-1: 0 1px 2px rgba(12, 22, 19, 0.05), 0 8px 18px -14px rgba(12, 22, 19, 0.28);
+  --uh-elev-2: 0 2px 6px rgba(12, 22, 19, 0.06), 0 18px 40px -24px rgba(12, 22, 19, 0.36);
+  --uh-elev-3: 0 34px 74px -38px rgba(12, 22, 19, 0.48), 0 6px 18px -12px rgba(12, 22, 19, 0.2);
+  --uh-edge: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --uh-card: rgba(255, 255, 255, 0.82);
+  --uh-card-strong: rgba(255, 255, 255, 0.94);
+  --uh-hair: rgba(12, 22, 19, 0.1);
+  --uh-hair-strong: rgba(12, 22, 19, 0.16);
+
+  /* 动效曲线：out 用于「进入」，spring 用于「弹入」，inout 用于循环 */
+  --uh-dur-1: 140ms;
+  --uh-dur-2: 240ms;
+  --uh-dur-3: 380ms;
+  --uh-dur-4: 520ms;
+  --uh-ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --uh-ease-inout: cubic-bezier(0.62, 0.04, 0.36, 1);
+  --uh-spring: cubic-bezier(0.2, 1.16, 0.3, 1);
+  --uh-stagger: 26ms;
+
+  /* 指针跟随光斑的默认落点（无 JS 时退化为顶部中央） */
+  --uh-mx: 50%;
+  --uh-my: 0%;
+}
+
+html.dark {
+  --uh-elev-1: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 22px -16px rgba(0, 0, 0, 0.9);
+  --uh-elev-2: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -26px rgba(0, 0, 0, 0.95);
+  --uh-elev-3: 0 36px 80px -40px rgba(0, 0, 0, 1), 0 8px 20px -14px rgba(0, 0, 0, 0.8);
+  --uh-edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --uh-card: rgba(21, 31, 27, 0.78);
+  --uh-card-strong: rgba(24, 35, 31, 0.94);
+  --uh-hair: rgba(233, 246, 240, 0.11);
+  --uh-hair-strong: rgba(233, 246, 240, 0.2);
+}
+
+/* ===== 02 全局动效基线 ===== */
+@keyframes uh-view-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.994); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes uh-rise {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes uh-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes uh-pop {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes uh-panel-in {
+  from { opacity: 0; transform: translate3d(0, 18px, 0) scale(0.975); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes uh-toast-in {
+  from { opacity: 0; transform: translate3d(-50%, 18px, 0) scale(0.96); }
+  to { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); }
+}
+@keyframes uh-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+@keyframes uh-sweep {
+  from { transform: translate3d(-65%, 0, 0); opacity: 0; }
+  35% { opacity: 1; }
+  to { transform: translate3d(65%, 0, 0); opacity: 0; }
+}
+@keyframes uh-orbit {
+  to { transform: rotate(360deg); }
+}
+@keyframes uh-pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 189, 144, 0.45); opacity: 1; }
+  50% { box-shadow: 0 0 0 5px rgba(47, 189, 144, 0); opacity: 0.62; }
+}
+@keyframes uh-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes uh-progress {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+/* 键盘可达性：统一焦点环，鼠标点击不出现 */
+button:focus-visible,
+[role="button"]:focus-visible,
+.icon-btn:focus-visible,
+.art-card:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+.gallery-select-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--sel-line), 0 0 0 4px var(--sel-soft);
+}
+
+/* 按压反馈统一到「下沉」，比放大更像实体按钮 */
+button:not(:disabled):active {
+  transform: translateY(1px) scale(0.985);
+  transition-duration: 70ms;
+}
+
+/* 视图切换入场：三个页面根节点在切换时重新挂载，动画自然重播 */
+.workspace,
+.gallery-page,
+.prompt-library-page {
+  animation: uh-view-in var(--uh-dur-4) var(--uh-ease-out) both;
+}
+
+/* ===== 03 背景与景深 ===== */
+/* 极光之上再叠一层「聚光 + 暗角」，让中心亮、边缘沉，卡片才有地方浮 */
+.app-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(90% 70% at 50% 120%, rgba(23, 163, 118, 0.1), transparent 65%);
+}
+
+html.dark .app-root::before {
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(79, 214, 168, 0.08), transparent 62%),
+    radial-gradient(95% 75% at 50% 115%, rgba(91, 110, 245, 0.12), transparent 68%);
+}
+
+/* 极光稍微提一点存在感，浅色下几乎看不见等于白做 */
+.app-root .aurora { opacity: 0.72; }
+html.dark .aurora { opacity: 0.38; }
+
+/* ===== 04 顶栏 ===== */
+.topbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.74));
+  border-color: var(--uh-hair);
+  box-shadow: var(--uh-elev-1), var(--uh-edge);
+  transition: box-shadow var(--uh-dur-3) var(--uh-ease-out), border-color var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.topbar:hover {
+  box-shadow: var(--uh-elev-2), var(--uh-edge);
+}
+
+html.dark .topbar {
+  background: linear-gradient(180deg, rgba(28, 40, 35, 0.92), rgba(19, 28, 24, 0.82));
+}
+
+/* 品牌标：静止时轻微呼吸的光，hover 时转正并加亮 */
+.brand .logo {
+  transition: transform var(--uh-dur-3) var(--uh-spring), box-shadow var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.brand:hover .logo {
+  transform: rotate(-6deg) scale(1.06);
+  box-shadow: 0 0 0 1px var(--sel-line), 0 12px 26px -12px rgba(79, 214, 168, 0.95);
+}
+
+.brand b {
+  background: linear-gradient(96deg, var(--ink) 10%, var(--sel-text) 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 在线点：外圈涟漪 */
+.brand .live {
+  position: relative;
+}
+
+.brand .live::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0;
+  animation: uh-live-ring 2.6s var(--uh-ease-inout) infinite;
+}
+
+@keyframes uh-live-ring {
+  0% { transform: scale(0.6); opacity: 0.55; }
+  70%, 100% { transform: scale(1.7); opacity: 0; }
+}
+
+/* 顶栏参数胶囊：hover 时描边亮起并轻微抬升 */
+.ptag {
+  border-color: var(--uh-hair);
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), box-shadow var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.ptag:hover {
+  transform: translateY(-1px);
+  border-color: var(--sel-line);
+  box-shadow: 0 8px 20px -14px rgba(23, 163, 118, 0.6);
+}
+
+.ptag.accent {
+  background: linear-gradient(135deg, rgba(79, 214, 168, 0.16), rgba(91, 110, 245, 0.1));
+  /* 原实现用 --mint(#2fbd90) 压在薄荷浅底上，实测对比度只有 2.15:1，
+     顶栏这一格又要读供应商主机名和模型名，改用语料里的「浅底选中文字」色 */
+  color: var(--sel-text);
+}
+
+.ptag.accent b {
+  color: var(--sel-text);
+}
+
+.ptag.saved b {
+  color: var(--sel-text);
+}
+
+/* 导航按钮：hover 抬起，选中态是多一层光晕的实心块 */
+.icon-btn {
+  position: relative;
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), color var(--uh-dur-2) var(--uh-ease-out),
+    background-color var(--uh-dur-2) var(--uh-ease-out), box-shadow var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.icon-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px -14px rgba(12, 22, 19, 0.55);
+}
+
+.icon-btn.on {
+  background: linear-gradient(150deg, #6ee6bb, #26b98c);
+  box-shadow: 0 10px 22px -12px rgba(35, 175, 133, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.icon-btn.on svg {
+  animation: uh-icon-pop var(--uh-dur-3) var(--uh-spring) both;
+}
+
+@keyframes uh-icon-pop {
+  from { transform: scale(0.82) rotate(-8deg); }
+  to { transform: scale(1) rotate(0); }
+}
+
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+/* 主按钮：常驻一道缓慢扫过的高光，比静态渐变更有「活着」的感觉 */
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.55) 45%, transparent 62%);
+  transform: translateX(-120%);
+  animation: uh-btn-sheen 5.6s var(--uh-ease-inout) infinite;
+}
+
+@keyframes uh-btn-sheen {
+  0%, 62% { transform: translateX(-120%); }
+  88%, 100% { transform: translateX(120%); }
+}
+
+/* 三个视图切换按钮收成一组分段控件，和右侧「设置 / 主题」拉开层级。
+   用 title 属性做锚点，比 nth-child 稳：顶栏以后加按钮也不会错位。
+   注意排除 .on：选中态要保留 mint 实心填充，不能被分组底色盖掉。 */
+.topbar .icon-btn[title="图库"]:not(.on),
+.topbar .icon-btn[title="提示词库"]:not(.on),
+.topbar .icon-btn[title="首页工作台"]:not(.on) {
+  border-radius: 0;
+  border-color: transparent;
+  background: rgba(12, 22, 19, 0.045);
+}
+
+.topbar .icon-btn[title="图库"]:not(.on) {
+  border-radius: 10px 0 0 10px;
+}
+
+.topbar .icon-btn[title="提示词库"]:not(.on) {
+  border-radius: 0;
+}
+
+.topbar .icon-btn[title="首页工作台"]:not(.on) {
+  border-radius: 0 10px 10px 0;
+}
+
+/* 选中项无论落在哪一格，圆角都按分段控件的语义给 */
+.topbar .icon-btn[title="图库"].on {
+  border-radius: 10px 0 0 10px;
+}
+
+.topbar .icon-btn[title="首页工作台"].on {
+  border-radius: 0 10px 10px 0;
+}
+
+.topbar .icon-btn[title="图库"]:not(.on):hover,
+.topbar .icon-btn[title="提示词库"]:not(.on):hover,
+.topbar .icon-btn[title="首页工作台"]:not(.on):hover {
+  background: rgba(12, 22, 19, 0.09);
+  transform: none;
+  box-shadow: none;
+}
+
+html.dark .topbar .icon-btn[title="图库"]:not(.on),
+html.dark .topbar .icon-btn[title="提示词库"]:not(.on),
+html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
+  background: rgba(233, 246, 240, 0.06);
+}
+
+html.dark .topbar .icon-btn[title="图库"]:not(.on):hover,
+html.dark .topbar .icon-btn[title="提示词库"]:not(.on):hover,
+html.dark .topbar .icon-btn[title="首页工作台"]:not(.on):hover {
+  background: rgba(233, 246, 240, 0.12);
+}
+
+/* 分组两侧各留 1px 缝隙，避免三块拼成一个死板的长条 */
+.topbar .icon-btn[title="提示词库"]:not(.on),
+.topbar .icon-btn[title="首页工作台"]:not(.on) {
+  box-shadow: inset 1px 0 0 rgba(12, 22, 19, 0.06);
+}
+
+html.dark .topbar .icon-btn[title="提示词库"]:not(.on),
+html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
+  box-shadow: inset 1px 0 0 rgba(233, 246, 240, 0.07);
+}
+
+/* 窗口按钮的 hover 语义 styles.css 已经写好了（薄荷底 / 关闭键转红），这里不再覆盖 */
+
+/* ===== 05 抽屉与会话列表 ===== */
+/* 抽屉打开时压暗主区，视线才会落到抽屉里；pointer-events 留给既有的「点外面关闭」逻辑 */
+.main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  background: rgba(8, 16, 13, 0.28);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.main.drawer-sessions::before,
+.main.drawer-params::before {
+  opacity: 1;
+}
+
+.dark .main.drawer-sessions::before,
+.dark .main.drawer-params::before {
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.drawer {
+  background: var(--uh-card-strong);
+  border-color: var(--uh-hair);
+  box-shadow: var(--uh-elev-3), var(--uh-edge);
+  transition:
+    transform 0.46s var(--uh-spring),
+    opacity 0.26s var(--uh-ease-out),
+    visibility 0.46s;
+}
+
+/* 抽屉内元素依次抬起来，比整块平移更有层次 */
+.drawer.open .sidebar > *,
+.drawer.open .inspector > * {
+  animation: uh-rise var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+.drawer.open .sidebar > *:nth-child(1),
+.drawer.open .inspector > *:nth-child(1) { animation-delay: 40ms; }
+.drawer.open .sidebar > *:nth-child(2),
+.drawer.open .inspector > *:nth-child(2) { animation-delay: 70ms; }
+.drawer.open .sidebar > *:nth-child(3),
+.drawer.open .inspector > *:nth-child(3) { animation-delay: 100ms; }
+.drawer.open .sidebar > *:nth-child(n + 4),
+.drawer.open .inspector > *:nth-child(n + 4) { animation-delay: 130ms; }
+
+.edge-handle {
+  color: var(--ink-soft);
+  /* 窄窗口下把手会压到卡片上，默认半透明，hover 才完全显形 */
+  opacity: 0.62;
+  transition: opacity var(--uh-dur-2) var(--uh-ease-out), transform 0.42s var(--uh-spring),
+    color var(--uh-dur-2) var(--uh-ease-out), border-color var(--uh-dur-2) var(--uh-ease-out),
+    box-shadow var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.edge-handle:hover {
+  opacity: 1;
+  color: var(--sel-text);
+  border-color: var(--sel-line);
+  box-shadow: 0 10px 24px -14px rgba(23, 163, 118, 0.7);
+}
+
+.edge-handle:hover svg {
+  transform: scale(1.15);
+}
+
+/* 会话项：左侧高亮条改用伪元素，可以带高度变化动画 */
+.session {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.session::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--sel), var(--sel-deep));
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: height 0.3s var(--uh-spring), opacity 0.2s var(--uh-ease-out);
+}
+
+.session:hover {
+  transform: translateX(2px);
+  background: var(--sel-soft);
+  border-color: transparent;
+}
+
+.session:hover::before {
+  height: 34%;
+  opacity: 0.45;
+}
+
+.session.active {
+  box-shadow: none;
+  background: var(--sel-soft-2);
+}
+
+.session.active::before {
+  height: 62%;
+  opacity: 1;
+}
+
+/* 删除按钮平时收起，hover 才出现，减少列表噪音 */
+.session .session-delete {
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity var(--uh-dur-2) var(--uh-ease-out), transform var(--uh-dur-2) var(--uh-ease-out),
+    color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.session:hover .session-delete,
+.session.active .session-delete,
+.session:focus-within .session-delete {
+  opacity: 1;
+  transform: none;
+}
+
+.session-loading {
+  animation: spin 1s linear infinite, uh-pulse-dot 1.8s var(--uh-ease-inout) infinite;
+  border-radius: 50%;
+}
+
+.section-title span {
+  letter-spacing: 0.4px;
+}
+
+/* ===== 06 Composer ===== */
+.composer {
+  background: var(--uh-card);
+  border-color: var(--uh-hair);
+  box-shadow: var(--uh-elev-2), var(--uh-edge);
+  animation: uh-rise var(--uh-dur-4) var(--uh-spring) both;
+  animation-delay: 60ms;
+  transition: box-shadow var(--uh-dur-3) var(--uh-ease-out), border-color var(--uh-dur-3) var(--uh-ease-out),
+    background-color var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.composer:focus-within {
+  border-color: var(--sel-line);
+  box-shadow: var(--uh-elev-2), 0 0 0 1px var(--sel-line), 0 0 0 6px var(--sel-soft);
+}
+
+/* 拖拽参考图时给整块一个薄荷色呼吸边 */
+.composer.drop-active {
+  border-color: var(--sel);
+  background: linear-gradient(180deg, rgba(79, 214, 168, 0.14), rgba(79, 214, 168, 0.04));
+  box-shadow: 0 0 0 2px var(--sel-soft-2), var(--uh-elev-2);
+}
+
+.pill {
+  transition: transform var(--uh-dur-1) var(--uh-ease-out), background-color var(--uh-dur-1) var(--uh-ease-out),
+    color var(--uh-dur-1) var(--uh-ease-out);
+}
+
+.pill:hover {
+  transform: translateY(-1px);
+}
+
+.prompt-assist-button {
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out), color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.prompt-assist-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--sel-line);
+  background: var(--sel-soft);
+  color: var(--sel-text);
+}
+
+.prompt-assist-button svg {
+  transition: transform var(--uh-dur-3) var(--uh-spring);
+}
+
+.prompt-assist-button:hover:not(:disabled) svg {
+  transform: scale(1.12) rotate(-6deg);
+}
+
+.prompt-box {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42));
+  border-color: var(--uh-hair);
+  transition: border-color var(--uh-dur-2) var(--uh-ease-out), box-shadow var(--uh-dur-2) var(--uh-ease-out),
+    background-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+html.dark .prompt-box {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
+}
+
+.prompt-box:focus-within {
+  border-color: var(--sel-line);
+  box-shadow: 0 0 0 3px var(--sel-soft), var(--uh-edge);
+}
+
+.reference-chip {
+  transition: transform var(--uh-dur-2) var(--uh-spring), box-shadow var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.reference-chip:hover {
+  transform: translateY(-2px) scale(1.04);
+  border-color: var(--sel-line);
+  box-shadow: 0 10px 22px -14px rgba(12, 22, 19, 0.6);
+}
+
+.reference-chip:active {
+  cursor: grabbing;
+}
+
+.generate-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.generate-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.5) 48%, transparent 62%);
+  transform: translateX(-130%);
+  animation: uh-btn-sheen 4.8s var(--uh-ease-inout) infinite;
+}
+
+.generate-button:disabled::after {
+  animation: none;
+}
+
+/* ===== 07 画布与图片卡片 ===== */
+.canvas-area {
+  position: relative;
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.6), transparent 55%),
+    radial-gradient(circle at 1px 1px, rgba(12, 22, 19, 0.05) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--uh-card);
+  border-color: var(--uh-hair);
+  box-shadow: var(--uh-elev-1), var(--uh-edge);
+  animation: uh-view-in var(--uh-dur-4) var(--uh-ease-out) both;
+}
+
+html.dark .canvas-area {
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(79, 214, 168, 0.07), transparent 55%),
+    radial-gradient(circle at 1px 1px, rgba(233, 246, 240, 0.05) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--uh-card);
+}
+
+.history-head {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--uh-hair);
+  animation: uh-fade var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+.history-title svg {
+  color: var(--sel-text);
+}
+
+.summary-chip {
+  transition: transform var(--uh-dur-1) var(--uh-ease-out), box-shadow var(--uh-dur-1) var(--uh-ease-out);
+}
+
+.summary-chip:hover {
+  transform: translateY(-1px);
+}
+
+.summary-chip.active {
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-chip.active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.6) 50%, transparent 80%);
+  transform: translateX(-120%);
+  animation: uh-sweep 2.6s var(--uh-ease-inout) infinite;
+}
+
+/* 卡片：指针跟随光斑 + hover 抬升 + 光泽扫过 */
+.art-card {
+  border-color: var(--uh-hair);
+  box-shadow: var(--uh-elev-1);
+  transition:
+    transform 0.42s var(--uh-spring),
+    box-shadow 0.42s var(--uh-ease-out),
+    border-color 0.3s var(--uh-ease-out);
+  isolation: isolate;
+}
+
+.art-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(220px circle at var(--uh-mx) var(--uh-my), rgba(255, 255, 255, 0.42), transparent 68%);
+  mix-blend-mode: soft-light;
+  transition: opacity var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.art-card:hover::before {
+  opacity: 1;
+}
+
+.art-card:hover {
+  transform: translateY(-6px) scale(1.012);
+  border-color: var(--sel-line);
+  box-shadow: var(--uh-elev-3), 0 0 0 1px var(--sel-line);
+}
+
+/*
+ * 选中态必须压过 hover：styles.css 末尾的选中规则与 .art-card:hover 同权重，
+ * 而本层后加载，不加这条的话「hover 选中的卡片会把选中环吃掉」。
+ */
+.art-card.selected,
+.art-card.selected:hover,
+.main .gallery-tile-frame > .art-card.selected:hover {
+  border-color: var(--sel);
+  box-shadow: 0 0 0 2px var(--sel), 0 0 0 5px var(--sel-ring), var(--uh-elev-3);
+}
+
+.image-card::after {
+  content: "";
+  position: absolute;
+  inset: -30% -40%;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 255, 255, 0.4) 50%, transparent 58%);
+}
+
+.image-card:hover::after {
+  animation: uh-sweep 0.85s var(--uh-ease-out) 1 both;
+}
+
+.image-card > img {
+  transition: transform 0.6s var(--uh-ease-out), filter 0.6s var(--uh-ease-out);
+}
+
+.image-card:hover > img {
+  transform: scale(1.055);
+  filter: saturate(1.06) contrast(1.02);
+}
+
+/* 卡片工具按钮：默认收起，hover / 键盘聚焦时错峰滑入 */
+.art-tools {
+  z-index: 4;
+}
+
+.art-tools button {
+  opacity: 0;
+  transform: translate3d(6px, 0, 0) scale(0.94);
+  transition: opacity var(--uh-dur-2) var(--uh-ease-out), transform var(--uh-dur-2) var(--uh-spring),
+    background-color var(--uh-dur-2) var(--uh-ease-out), color var(--uh-dur-2) var(--uh-ease-out);
+  backdrop-filter: blur(10px) saturate(140%);
+}
+
+.art-card:hover .art-tools button,
+.art-card:focus-within .art-tools button {
+  opacity: 0.96;
+  transform: none;
+}
+
+.art-card:hover .art-tools button:nth-child(1) { transition-delay: 10ms; }
+.art-card:hover .art-tools button:nth-child(2) { transition-delay: 34ms; }
+.art-card:hover .art-tools button:nth-child(3) { transition-delay: 58ms; }
+.art-card:hover .art-tools button:nth-child(4) { transition-delay: 82ms; }
+.art-card:hover .art-tools button:nth-child(5) { transition-delay: 106ms; }
+.art-card:hover .art-tools button:nth-child(6) { transition-delay: 130ms; }
+
+.art-tools button:hover {
+  transform: translateY(-1px) scale(1.08);
+  background: var(--sel-soft-2);
+  color: var(--sel-text);
+}
+
+.art-tools .retry-button:hover {
+  background: var(--sel-soft-2);
+  color: var(--sel-text);
+}
+
+/* 失败卡片的「重试 / 删除」常驻：这是用户要立刻做的事，不该再要点一下才现身 */
+.art-card.failed .art-tools button {
+  opacity: 0.92;
+  transform: none;
+}
+
+.tile-select {
+  z-index: 5;
+  transition: transform var(--uh-dur-2) var(--uh-spring), background-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.tile-select:hover {
+  transform: scale(1.12);
+}
+
+/* 生成中卡片：环形旋转光 + 流光 + 进度条 + 呼吸点 */
+.generating-card {
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(237, 248, 243, 0.96) 0%, rgba(248, 251, 249, 0.98) 52%, rgba(229, 241, 255, 0.96) 100%);
+}
+
+html.dark .generating-card {
+  background: linear-gradient(135deg, #17211d 0%, #1d3029 52%, #1e2d49 100%);
+}
+
+.generating-card::before {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 34%, rgba(47, 189, 144, 0.85) 52%, rgba(91, 110, 245, 0.45) 62%, transparent 78%);
+  filter: blur(22px);
+  opacity: 0.9;
+  animation: uh-orbit 4.6s linear infinite;
+}
+
+.generating-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.55) 45%, transparent 70%);
+  background-size: 260% 100%;
+  animation: uh-shimmer 2.4s var(--uh-ease-inout) infinite;
+}
+
+html.dark .generating-card::after {
+  background: linear-gradient(110deg, transparent 20%, rgba(140, 224, 189, 0.16) 45%, transparent 70%);
+  background-size: 260% 100%;
+}
+
+.generating-label,
+.generating-meta {
+  position: relative;
+  z-index: 1;
+}
+
+.generating-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.generating-label::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  animation: uh-pulse-dot 1.5s var(--uh-ease-inout) infinite;
+}
+
+.generating-meta::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  bottom: -10px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--mint), transparent);
+  background-size: 220% 100%;
+  animation: uh-progress 2.2s linear infinite;
+}
+
+/* 失败卡片：静态红环 + hover 轻微警示抖动 */
+.art-card.failed::before {
+  display: none;
+}
+
+.art-card.failed {
+  border-color: rgba(226, 88, 106, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(226, 88, 106, 0.12);
+}
+
+.art-card.failed:hover {
+  border-color: rgba(226, 88, 106, 0.55);
+  box-shadow: 0 18px 40px -26px rgba(226, 88, 106, 0.9);
+  animation: uh-shake 0.42s var(--uh-ease-inout) 1;
+}
+
+@keyframes uh-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  60% { transform: translateX(2px); }
+}
+
+/* 网格入场错峰：只调延迟，复用 styles.css 里的 card-in 动画 */
+/*
+ * fill-mode 必须改成 backwards：
+ * styles.css 给 .art-card 用的是 `card-in ... both`，动画结束后结束帧
+ * （transform: none / opacity: 1）会一直压住元素，导致 :hover 的抬升和缩放
+ * 永远不会生效——这是本层修掉的一个既有缺陷。
+ */
+.art-card {
+  animation-fill-mode: backwards;
+}
+
+.preview-grid > .art-card:nth-child(1) { animation-delay: 0ms; }
+.preview-grid > .art-card:nth-child(2) { animation-delay: var(--uh-stagger); }
+.preview-grid > .art-card:nth-child(3) { animation-delay: calc(var(--uh-stagger) * 2); }
+.preview-grid > .art-card:nth-child(4) { animation-delay: calc(var(--uh-stagger) * 3); }
+.preview-grid > .art-card:nth-child(5) { animation-delay: calc(var(--uh-stagger) * 4); }
+.preview-grid > .art-card:nth-child(6) { animation-delay: calc(var(--uh-stagger) * 5); }
+.preview-grid > .art-card:nth-child(7) { animation-delay: calc(var(--uh-stagger) * 6); }
+.preview-grid > .art-card:nth-child(8) { animation-delay: calc(var(--uh-stagger) * 7); }
+.preview-grid > .art-card:nth-child(9) { animation-delay: calc(var(--uh-stagger) * 8); }
+.preview-grid > .art-card:nth-child(10) { animation-delay: calc(var(--uh-stagger) * 9); }
+.preview-grid > .art-card:nth-child(n + 11) { animation-delay: calc(var(--uh-stagger) * 10); }
+
+.workspace-pagination,
+.gallery-pagination {
+  animation: uh-fade var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+/* ===== 08 图库与提示词库 ===== */
+.gallery-page,
+.prompt-library-page {
+  border: 1px solid var(--uh-hair);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(255, 255, 255, 0.55), transparent 55%),
+    var(--uh-card);
+  box-shadow: var(--uh-elev-1), var(--uh-edge);
+}
+
+html.dark .gallery-page,
+html.dark .prompt-library-page {
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(79, 214, 168, 0.06), transparent 55%),
+    var(--uh-card);
+}
+
+/* 页头：图库用 .page-head，提示词库用 .prompt-library-hero，两套都要照顾到 */
+.page-head,
+.prompt-library-hero {
+  position: relative;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--uh-hair);
+}
+
+.page-head h2,
+.prompt-library-hero h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.page-head h2::before,
+.prompt-library-hero h2::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--sel), var(--blue));
+  box-shadow: 0 0 12px rgba(47, 189, 144, 0.6);
+}
+
+/* 条数徽标：原先孤零零贴在右上角，补一层玻璃底 */
+.page-head .pill,
+.prompt-library-hero .summary-chip {
+  border-color: var(--uh-hair);
+  background: var(--uh-card-strong);
+  box-shadow: var(--uh-elev-1);
+}
+
+.gallery-tools,
+.prompt-library-tools {
+  border-color: var(--uh-hair);
+  background: var(--uh-card-strong);
+  box-shadow: var(--uh-elev-1), var(--uh-edge);
+  transition: box-shadow var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.gallery-tools:hover,
+.prompt-library-tools:hover {
+  box-shadow: var(--uh-elev-2), var(--uh-edge);
+}
+
+.search-wrap {
+  transition: border-color var(--uh-dur-2) var(--uh-ease-out), box-shadow var(--uh-dur-2) var(--uh-ease-out),
+    background-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.search-wrap:focus-within {
+  border-color: var(--sel-line);
+  background: var(--uh-card-strong);
+  box-shadow: 0 0 0 3px var(--sel-soft);
+}
+
+.gallery-tools button,
+.prompt-library-tools button {
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out),
+    border-color var(--uh-dur-2) var(--uh-ease-out), color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.gallery-tools button:hover,
+.prompt-library-tools button:hover {
+  transform: translateY(-1px);
+}
+
+.gallery-bulkbar {
+  animation: uh-fade var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+/* 图库卡片沿用 .art-card，这里只补入场错峰与批量选中反馈 */
+.gallery-grid > .gallery-tile-frame:nth-child(1) > .art-card { animation-delay: 0ms; }
+.gallery-grid > .gallery-tile-frame:nth-child(2) > .art-card { animation-delay: var(--uh-stagger); }
+.gallery-grid > .gallery-tile-frame:nth-child(3) > .art-card { animation-delay: calc(var(--uh-stagger) * 2); }
+.gallery-grid > .gallery-tile-frame:nth-child(4) > .art-card { animation-delay: calc(var(--uh-stagger) * 3); }
+.gallery-grid > .gallery-tile-frame:nth-child(5) > .art-card { animation-delay: calc(var(--uh-stagger) * 4); }
+.gallery-grid > .gallery-tile-frame:nth-child(6) > .art-card { animation-delay: calc(var(--uh-stagger) * 5); }
+.gallery-grid > .gallery-tile-frame:nth-child(7) > .art-card { animation-delay: calc(var(--uh-stagger) * 6); }
+.gallery-grid > .gallery-tile-frame:nth-child(8) > .art-card { animation-delay: calc(var(--uh-stagger) * 7); }
+.gallery-grid > .gallery-tile-frame:nth-child(n + 9) > .art-card { animation-delay: calc(var(--uh-stagger) * 8); }
+
+/* 提示词卡：整块抬升 + 光斑 + 描边渐变 */
+.prompt-template-card {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--uh-hair);
+  background: var(--uh-card-strong);
+  box-shadow: var(--uh-elev-1);
+  animation: uh-pop var(--uh-dur-4) var(--uh-spring) both;
+  transition: transform 0.4s var(--uh-spring), box-shadow 0.4s var(--uh-ease-out),
+    border-color 0.3s var(--uh-ease-out);
+}
+
+.prompt-template-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(240px circle at var(--uh-mx) var(--uh-my), rgba(47, 189, 144, 0.16), transparent 70%);
+  transition: opacity var(--uh-dur-3) var(--uh-ease-out);
+}
+
+.prompt-template-card:hover::before {
+  opacity: 1;
+}
+
+.prompt-template-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--sel-line);
+  box-shadow: var(--uh-elev-2), 0 0 0 1px var(--sel-line);
+}
+
+.prompt-template-grid > .prompt-template-card:nth-child(1) { animation-delay: 0ms; }
+.prompt-template-grid > .prompt-template-card:nth-child(2) { animation-delay: var(--uh-stagger); }
+.prompt-template-grid > .prompt-template-card:nth-child(3) { animation-delay: calc(var(--uh-stagger) * 2); }
+.prompt-template-grid > .prompt-template-card:nth-child(4) { animation-delay: calc(var(--uh-stagger) * 3); }
+.prompt-template-grid > .prompt-template-card:nth-child(5) { animation-delay: calc(var(--uh-stagger) * 4); }
+.prompt-template-grid > .prompt-template-card:nth-child(6) { animation-delay: calc(var(--uh-stagger) * 5); }
+.prompt-template-grid > .prompt-template-card:nth-child(n + 7) { animation-delay: calc(var(--uh-stagger) * 6); }
+
+.prompt-template-card-badges .pill {
+  border-radius: 6px;
+}
+
+.prompt-template-card-actions button {
+  transition: transform var(--uh-dur-2) var(--uh-spring), background-color var(--uh-dur-2) var(--uh-ease-out),
+    color var(--uh-dur-2) var(--uh-ease-out), border-color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.prompt-template-card-actions button:hover {
+  transform: translateY(-2px);
+  border-color: var(--sel-line);
+  color: var(--sel-text);
+}
+
+/* ===== 09 弹窗与 Toast ===== */
+.modal {
+  background: rgba(8, 14, 11, 0.55);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
+}
+
+.modal.open {
+  animation: uh-fade var(--uh-dur-2) var(--uh-ease-out) both;
+}
+
+.modal.open > .modal-panel,
+.modal.open > .settings-modal {
+  animation: uh-panel-in 0.42s var(--uh-spring) both;
+  box-shadow: var(--uh-elev-3);
+}
+
+.modal-head {
+  border-bottom: 1px solid var(--uh-hair);
+}
+
+.modal-head .mini-controls button,
+.modal-head > button,
+.settings-close {
+  transition: transform var(--uh-dur-2) var(--uh-spring), background-color var(--uh-dur-2) var(--uh-ease-out),
+    color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.modal-head .mini-controls button:hover,
+.modal-head > button:hover,
+.settings-close:hover {
+  transform: translateY(-1px) scale(1.05);
+}
+
+.modal-nav {
+  transition: transform var(--uh-dur-2) var(--uh-spring), background-color var(--uh-dur-2) var(--uh-ease-out),
+    opacity var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.modal-nav:hover:not(:disabled) {
+  transform: translateY(-50%) scale(1.12);
+}
+
+.modal-meta-row {
+  border-radius: 8px;
+  transition: background-color var(--uh-dur-1) var(--uh-ease-out);
+}
+
+.modal-meta-row:hover {
+  background: var(--sel-soft);
+}
+
+.modal-image-stage img {
+  transition: transform 0.32s var(--uh-ease-out), filter 0.32s var(--uh-ease-out);
+}
+
+.settings-nav button {
+  position: relative;
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), background-color var(--uh-dur-2) var(--uh-ease-out),
+    color var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.settings-nav button:hover {
+  transform: translateX(2px);
+}
+
+/* 设置页签：选中项左侧加一条会「长出来」的指示条 */
+.settings-nav .snav {
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-nav .snav::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--sel), var(--sel-deep));
+  transform: translateY(-50%);
+  transition: height 0.3s var(--uh-spring);
+}
+
+.settings-nav .snav.on::before {
+  height: 58%;
+}
+
+/* 设置内容区：切页签时淡入，避免整块硬切 */
+.settings-body .sbody.on {
+  animation: uh-rise var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+/* 预览大图：加载完成时淡入，避免「啪」地出现 */
+.modal-image-stage img {
+  animation: uh-fade var(--uh-dur-3) var(--uh-ease-out) both;
+}
+
+/* 文本选中色跟随品牌色 */
+::selection {
+  background: var(--sel-soft-2);
+  color: var(--sel-text);
+}
+
+.toast {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(28, 40, 35, 0.95), rgba(17, 26, 22, 0.95));
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 20px 44px -24px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.toast.show {
+  animation: uh-toast-in 0.38s var(--uh-spring) both;
+}
+
+/* 底部一条细进度，提示这条 toast 即将消失 */
+.toast::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: linear-gradient(90deg, var(--mint), var(--blue));
+  transform-origin: left center;
+  animation: uh-toast-bar 3s linear both;
+}
+
+@keyframes uh-toast-bar {
+  from { transform: scaleX(1); opacity: 0.9; }
+  to { transform: scaleX(0); opacity: 0.2; }
+}
+
+/* ===== 10 空态 ===== */
+.canvas-empty {
+  border-color: var(--uh-hair-strong);
+  background:
+    radial-gradient(60% 60% at 50% 30%, rgba(47, 189, 144, 0.1), transparent 70%),
+    linear-gradient(180deg, var(--surface-2), transparent 72%);
+}
+
+.canvas-empty .ce-glyph {
+  font-size: 24px;
+  animation: uh-float 3.4s var(--uh-ease-inout) infinite;
+  text-shadow: 0 8px 22px rgba(47, 189, 144, 0.5);
+}
+
+.canvas-empty h3 {
+  font-size: 15px;
+  letter-spacing: 0.2px;
+}
+
+.canvas-empty .ce-chips button {
+  position: relative;
+  overflow: hidden;
+  transition: transform var(--uh-dur-2) var(--uh-ease-out), border-color var(--uh-dur-2) var(--uh-ease-out),
+    color var(--uh-dur-2) var(--uh-ease-out), box-shadow var(--uh-dur-2) var(--uh-ease-out);
+}
+
+.canvas-empty .ce-chips button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px -18px rgba(23, 163, 118, 0.85);
+}
+
+/* ===== 11 深色主题精修 ===== */
+html.dark .art-card {
+  background: #131c19;
+  border-color: var(--uh-hair);
+}
+
+html.dark .art-card:hover {
+  border-color: var(--sel-line);
+  box-shadow: 0 26px 52px -26px rgba(0, 0, 0, 0.95), 0 0 0 1px var(--sel-line);
+}
+
+html.dark .art-tools button {
+  background: rgba(17, 26, 23, 0.66);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html.dark .prompt-template-card {
+  background: var(--uh-card-strong);
+}
+
+html.dark .session:hover {
+  background: rgba(79, 214, 168, 0.08);
+}
+
+html.dark .history-head {
+  border-bottom-color: var(--uh-hair);
+}
+
+html.dark .composer {
+  background: var(--uh-card);
+}
+
+/* 深色下抽屉与弹窗用近乎不透明的底：半透明叠在压暗的背景上会让次要文字发灰 */
+html.dark .drawer {
+  background: rgba(19, 28, 24, 0.97);
+}
+
+html.dark .modal-panel,
+html.dark .settings-modal,
+html.dark .prompt-template-panel,
+html.dark .prompt-editor-panel {
+  background: rgba(15, 23, 20, 0.99);
+}
+
+html.dark .modal {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+/* ===== 12 点击涟漪（由 ui-polish.ts 注入 .uh-ripple） ===== */
+.primary,
+.btn-primary,
+.generate-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.uh-ripple {
+  position: absolute;
+  z-index: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 68%);
+  transform: scale(0);
+  opacity: 0.55;
+  animation: uh-ripple 0.62s var(--uh-ease-out) forwards;
+}
+
+@keyframes uh-ripple {
+  to { transform: scale(1); opacity: 0; }
+}
+
+/* ===== 13 降级与自适应 ===== */
+@media (hover: none) {
+  /* 触屏没有 hover，工具条常驻，避免点不到 */
+  .art-tools button {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .art-card:hover {
+    transform: translateY(-3px);
+  }
+
+  .prompt-template-card:hover {
+    transform: translateY(-2px);
+  }
+}
+
+/*
+ * 系统「减少动画」的分级降级
+ *
+ * 注意：Windows 关掉「UI 动画」时 Chromium 会把 prefers-reduced-motion 报成 reduce，
+ * 一刀切停掉全部 transition 会让界面看起来彻底「死」掉（hover 都没反应）。
+ * 这里按「自动播放 vs 用户触发」分级：
+ *   - 循环与自动入场：停掉，或压到一帧（配合 backwards，不会卡在起始帧）；
+ *   - 用户触发的 hover / press：保留，但时长压到 120ms、位移减半。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .aurora i,
+  .brand .live,
+  .brand .live::after,
+  .btn-primary::after,
+  .generate-button::after,
+  .generating-card::before,
+  .generating-card::after,
+  .generating-label::before,
+  .generating-meta::after,
+  .summary-chip.active::after,
+  .canvas-empty .ce-glyph,
+  .image-card:hover::after,
+  .art-card.failed:hover,
+  .uh-ripple,
+  .toast::after {
+    animation: none !important;
+  }
+
+  .workspace,
+  .gallery-page,
+  .prompt-library-page,
+  .canvas-area,
+  .composer,
+  .art-card,
+  .prompt-template-card,
+  .toast.show,
+  .history-head,
+  .gallery-bulkbar,
+  .workspace-pagination,
+  .gallery-pagination,
+  .drawer.open .sidebar > *,
+  .drawer.open .inspector > *,
+  .icon-btn.on svg,
+  .modal.open,
+  .modal.open > .modal-panel,
+  .modal.open > .settings-modal {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  /* 用户触发的反馈保留：短、快、位移减半 */
+  button,
+  .art-card,
+  .prompt-template-card,
+  .session,
+  .icon-btn,
+  .ptag,
+  .prompt-assist-button,
+  .reference-chip,
+  .edge-handle,
+  .search-wrap,
+  .prompt-box {
+    transition-duration: 120ms !important;
+  }
+
+  .art-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .prompt-template-card:hover {
+    transform: translateY(-1px);
+  }
+
+  .icon-btn:hover,
+  .ptag:hover,
+  .session:hover,
+  .reference-chip:hover,
+  .prompt-assist-button:hover:not(:disabled) {
+    transform: none;
+  }
+
+  /* 没有出场动画时，工具条不能还靠 hover 才出现 */
+  .art-tools button {
+    opacity: 0.96;
+    transform: none;
+  }
+}
