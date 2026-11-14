@@ -865,9 +865,18 @@ html.dark .generating-card::after {
   background-size: 260% 100%;
 }
 
-.generating-label,
-.generating-meta {
+/*
+ * 注意别动 .generating-meta 的 position：
+ * styles.css 里它是 position: absolute; bottom: 8px 的贴底元素，
+ * 这里若写成 position: relative 会把它变成普通网格项、被 place-items: center 居中，
+ * 结果离卡片底 57px，挂在它上面的进度条也就跑到卡片中间去了。
+ */
+.generating-label {
   position: relative;
+  z-index: 1;
+}
+
+.generating-meta {
   z-index: 1;
 }
 
@@ -886,12 +895,20 @@ html.dark .generating-card::after {
   animation: uh-pulse-dot 1.5s var(--uh-ease-inout) infinite;
 }
 
-.generating-meta::after {
+/*
+ * 底部进度条挂在 .generating-meta::after 上。
+ * 定位要点：.generating-meta 是 position: absolute; bottom: 8px 的贴底元素，
+ * 所以 ::after 用负 bottom 才落到卡片底边 —— 这里取 -6px（底边上方 2px，
+ * 正好让 2px 高的线压在卡片内沿）。若写 -10px 会掉出卡片、被 .art-card 的
+ * overflow: hidden 裁掉，看起来像没有。
+ * 不用 .generating-card::after —— 那个位置已经是扫光动画。
+ */
+.generating-card .generating-meta::after {
   content: "";
   position: absolute;
   left: -8px;
   right: -8px;
-  bottom: -10px;
+  bottom: -6px;
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--mint), transparent);
@@ -1382,7 +1399,6 @@ html.dark .modal {
   .generating-card::before,
   .generating-card::after,
   .generating-label::before,
-  .generating-meta::after,
   .summary-chip.active::after,
   .canvas-empty .ce-glyph,
   .image-card:hover::after,
@@ -1390,6 +1406,20 @@ html.dark .modal {
   .uh-ripple,
   .toast::after {
     animation: none !important;
+  }
+
+  /*
+   * 例外：生成中卡片的底部进度条与呼吸点。
+   * 它们不是装饰动效，而是「正在生成」的状态指示 —— 完全静止会让人以为卡住了。
+   * 降级时保留，只把周期拉长、幅度减小，减少视觉刺激。
+   */
+  .generating-card .generating-meta::after {
+    animation: uh-progress 3.6s linear infinite !important;
+  }
+
+  .generating-label::before {
+    animation: uh-pulse-dot 2.6s var(--uh-ease-inout) infinite !important;
+    box-shadow: none !important;
   }
 
   .workspace,
