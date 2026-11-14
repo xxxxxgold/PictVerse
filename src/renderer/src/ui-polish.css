@@ -131,10 +131,38 @@ textarea:focus-visible,
   box-shadow: 0 0 0 1px var(--sel-line), 0 0 0 4px var(--sel-soft);
 }
 
-/* 按压反馈统一到「下沉」，比放大更像实体按钮 */
-button:not(:disabled):active {
+/*
+ * 按压反馈统一到「下沉」，比放大更像实体按钮。
+ *
+ * 注意：这条规则会整个替换 transform。任何用 transform 做居中的按钮
+ * （抽屉把手 translateY(-50%)、预览翻页 modal-nav、输入框内的 input-action）
+ * 一旦命中 :active，居中位移就丢了，按钮会「跳下去半截」。
+ * 所以用 :not() 把这些依赖 transform 的按钮排除在外，另给下面的专用规则。
+ */
+button:not(:disabled):not(.edge-handle):not(.modal-nav):not(.input-action):active {
   transform: translateY(1px) scale(0.985);
   transition-duration: 70ms;
+}
+
+/* 把手 / 翻页按钮：保留居中位移，只做轻微缩放反馈 */
+.edge-handle:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.main.drawer-sessions .edge-handle.left:active {
+  transform: translateY(-50%) translateX(var(--drawer-w)) scale(0.94);
+}
+
+.main.drawer-params .edge-handle.right:active {
+  transform: translateY(-50%) translateX(calc(-1 * var(--drawer-w))) scale(0.94);
+}
+
+.modal-nav:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.input-action:active {
+  transform: translateY(-50%) scale(0.92);
 }
 
 /* 视图切换入场：三个页面根节点在切换时重新挂载，动画自然重播 */
