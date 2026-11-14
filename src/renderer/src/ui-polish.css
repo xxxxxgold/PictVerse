@@ -21,10 +21,19 @@
 
 /* ===== 01 设计变量 ===== */
 :root {
-  /* 抬升阶梯：越靠上越用于「浮起来」的层 */
-  --uh-elev-1: 0 1px 2px rgba(12, 22, 19, 0.05), 0 8px 18px -14px rgba(12, 22, 19, 0.28);
-  --uh-elev-2: 0 2px 6px rgba(12, 22, 19, 0.06), 0 18px 40px -24px rgba(12, 22, 19, 0.36);
-  --uh-elev-3: 0 34px 74px -38px rgba(12, 22, 19, 0.48), 0 6px 18px -12px rgba(12, 22, 19, 0.2);
+  /*
+   * 抬升阶梯。
+   * 关键约束：box-shadow 的负 spread 会从元素的圆角半径里扣，
+   * radius + spread <= 0 时圆角被 clamp 成 0，阴影就变成直角矩形。
+   * 本项目最小的浮层圆角是 --r-sm(10px)，所以负 spread 一律不超过 -8px，
+   * 保证任何用到这些变量的元素阴影都跟随圆角。
+   */
+  --uh-elev-1: 0 1px 2px rgba(12, 22, 19, 0.04), 0 6px 14px -6px rgba(12, 22, 19, 0.09);
+  --uh-elev-2: 0 2px 6px rgba(12, 22, 19, 0.04), 0 12px 28px -8px rgba(12, 22, 19, 0.11);
+  --uh-elev-3:
+    0 1px 3px rgba(12, 22, 19, 0.03),
+    0 12px 30px -8px rgba(12, 22, 19, 0.08),
+    0 26px 56px -8px rgba(12, 22, 19, 0.06);
   --uh-edge: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --uh-card: rgba(255, 255, 255, 0.82);
   --uh-card-strong: rgba(255, 255, 255, 0.94);
@@ -47,9 +56,12 @@
 }
 
 html.dark {
-  --uh-elev-1: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 22px -16px rgba(0, 0, 0, 0.9);
-  --uh-elev-2: 0 2px 8px rgba(0, 0, 0, 0.5), 0 22px 48px -26px rgba(0, 0, 0, 0.95);
-  --uh-elev-3: 0 36px 80px -40px rgba(0, 0, 0, 1), 0 8px 20px -14px rgba(0, 0, 0, 0.8);
+  --uh-elev-1: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 18px -6px rgba(0, 0, 0, 0.5);
+  --uh-elev-2: 0 2px 8px rgba(0, 0, 0, 0.5), 0 14px 32px -8px rgba(0, 0, 0, 0.6);
+  --uh-elev-3:
+    0 2px 10px rgba(0, 0, 0, 0.5),
+    0 16px 38px -8px rgba(0, 0, 0, 0.62),
+    0 30px 66px -8px rgba(0, 0, 0, 0.5);
   --uh-edge: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --uh-card: rgba(21, 31, 27, 0.78);
   --uh-card-strong: rgba(24, 35, 31, 0.94);
@@ -178,7 +190,8 @@ html.dark .topbar {
 
 .brand:hover .logo {
   transform: rotate(-6deg) scale(1.06);
-  box-shadow: 0 0 0 1px var(--sel-line), 0 12px 26px -12px rgba(79, 214, 168, 0.95);
+  /* 圆角只有 9px，负 spread 必须小于它，否则阴影被扣成直角 */
+  box-shadow: 0 0 0 1px var(--sel-line), 0 10px 20px -6px rgba(79, 214, 168, 0.75);
 }
 
 .brand b {
@@ -246,12 +259,12 @@ html.dark .topbar {
 
 .icon-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 18px -14px rgba(12, 22, 19, 0.55);
+  box-shadow: 0 8px 18px -6px rgba(12, 22, 19, 0.28);
 }
 
 .icon-btn.on {
   background: linear-gradient(150deg, #6ee6bb, #26b98c);
-  box-shadow: 0 10px 22px -12px rgba(35, 175, 133, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  box-shadow: 0 8px 18px -6px rgba(35, 175, 133, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .icon-btn.on svg {
@@ -377,13 +390,14 @@ html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
 .drawer {
   /* 抽屉原本是「会移动的毛玻璃」。但它的底色本来就接近不透明，backdrop-filter
      收益很小，滑动期间却要每帧重采样整个背景 —— 开合瞬间画面会闪一下（用户感知为「抖」）。
-     这里换成实色底 + 独立合成层，同时把重绘范围圈在自身，不再连累背后的画布。 */
+     这里换成实色底 + 独立合成层。
+     注意：不要加 contain: paint —— 它会把 box-shadow 裁到矩形的 border box 上，
+     圆角处就出现「直角阴影」。 */
   background: rgba(255, 255, 255, 0.985);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   border-color: var(--uh-hair);
-  box-shadow: var(--uh-elev-3), var(--uh-edge);
-  contain: paint;
+  box-shadow: var(--uh-elev-3);
   will-change: transform, opacity;
   transition:
     transform 0.46s var(--uh-spring),
@@ -435,7 +449,7 @@ html.dark .topbar .icon-btn[title="首页工作台"]:not(.on) {
   opacity: 1;
   color: var(--sel-text);
   border-color: var(--sel-line);
-  box-shadow: 0 10px 24px -14px rgba(23, 163, 118, 0.7);
+  box-shadow: 0 10px 22px -8px rgba(23, 163, 118, 0.55);
 }
 
 .edge-handle:hover svg {
@@ -588,7 +602,7 @@ html.dark .prompt-box {
 .reference-chip:hover {
   transform: translateY(-2px) scale(1.04);
   border-color: var(--sel-line);
-  box-shadow: 0 10px 22px -14px rgba(12, 22, 19, 0.6);
+  box-shadow: 0 10px 20px -6px rgba(12, 22, 19, 0.3);
 }
 
 .reference-chip:active {
@@ -869,7 +883,7 @@ html.dark .generating-card::after {
 
 .art-card.failed:hover {
   border-color: rgba(226, 88, 106, 0.55);
-  box-shadow: 0 18px 40px -26px rgba(226, 88, 106, 0.9);
+  box-shadow: 0 16px 34px -8px rgba(226, 88, 106, 0.5);
   animation: uh-shake 0.42s var(--uh-ease-inout) 1;
 }
 
@@ -1240,7 +1254,7 @@ html.dark .art-card {
 
 html.dark .art-card:hover {
   border-color: var(--sel-line);
-  box-shadow: 0 26px 52px -26px rgba(0, 0, 0, 0.95), 0 0 0 1px var(--sel-line);
+  box-shadow: 0 20px 44px -10px rgba(0, 0, 0, 0.85), 0 0 0 1px var(--sel-line);
 }
 
 html.dark .art-tools button {
