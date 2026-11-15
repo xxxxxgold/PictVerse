@@ -62,6 +62,10 @@ export async function proxyImageEdit(env: ServerEnv, input: WebGenerateImageInpu
     setOptionalFormValue(formData, 'moderation', limitedInput.moderation)
     setOptionalFormValue(formData, 'partial_images', limitedInput.partialImages)
     setOptionalFormValue(formData, 'input_fidelity', limitedInput.inputFidelity)
+    if (limitedInput.maskPngBase64) {
+      const maskBuffer = Buffer.from(limitedInput.maskPngBase64.replace(/^data:image\/png;base64,/, ''), 'base64')
+      formData.set('mask', new Blob([maskBuffer], { type: 'image/png' }), 'mask.png')
+    }
     for (const referenceImage of input.referenceImages || []) {
       if (!referenceImage?.data) continue
       const buffer = Buffer.from(referenceImage.data, 'base64')

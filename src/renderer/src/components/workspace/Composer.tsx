@@ -278,6 +278,7 @@ export function Composer({ conversation, generating }: { conversation: Conversat
         <ReferencePreviewModal
           initialId={previewReferenceId}
           references={conversation.referenceImages}
+          mask={pendingMask}
           onClose={() => setPreviewReferenceId(null)}
         />
       ) : null}

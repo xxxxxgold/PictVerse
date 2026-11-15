@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { formatDuration } from '@shared/duration'
 import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, getOutputFormatsFor, resolveModelCapabilities } from '@shared/image-options'
+import { orderReferenceIdsForMask } from '@shared/mask'
 import { resolveActiveProvider } from '@shared/provider-selection'
 import type {
   Provider,
@@ -447,8 +448,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const id = get().activeConversationId
     if (!id) return
     const referenceImages = await window.pictverse.reference.remove(id, referenceImageId)
+    const maskTargetRemoved = get().pendingMask?.referenceId === referenceImageId
     set({
-      conversations: get().conversations.map((item) => (item.id === id ? { ...item, referenceImages } : item))
+      conversations: get().conversations.map((item) => (item.id === id ? { ...item, referenceImages } : item)),
+      // 遮罩属于某一张参考图，图被删了还留着就套到错误的图上
+      pendingMask: maskTargetRemoved ? null : get().pendingMask
     })
   },
   reorderReferenceImages: async (referenceImageIds) => {
@@ -555,6 +559,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ pendingMask: null })
       get().notify('已清除已应用的遮罩（当前模型不支持遮罩）')
     }
+    // 取最新状态而不是闭包快照：上面可能刚清空过 pendingMask
+    const pendingMask = get().pendingMask
+    const maskReferenceExists = Boolean(
+      pendingMask && conversation.referenceImages.some((reference) => reference.id === pendingMask.referenceId)
+    )
+    if (pendingMask && !maskReferenceExists) {
+      set({ pendingMask: null })
+      get().notify('已清除已应用的遮罩（对应的参考图已不在本次生成中）')
+    }
+    const activeMask = maskReferenceExists ? pendingMask : null
     const input: GenerateImageInput = {
       conversationId: conversation.id,
       prompt,
@@ -576,8 +590,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       seed: conversation.seedLocked ? conversation.seed ?? undefined : undefined,
       providerId: conversation.providerId ?? undefined,
       // 遮罩能力复核（上方已在不支持时清空 pendingMask，这里取的是清空后的值）
-      maskPngBase64: state.pendingMask?.dataUrl ?? undefined,
-      referenceImageIds: conversation.referenceImages.map((reference) => reference.id)
+      maskPngBase64: activeMask?.dataUrl ?? undefined,
+      maskReferenceId: activeMask?.referenceId ?? undefined,
+      // 上游只对第一张图应用 mask，带遮罩的那张必须排到最前
+      referenceImageIds: orderReferenceIdsForMask(
+        conversation.referenceImages.map((reference) => reference.id),
+        activeMask?.referenceId
+      )
     }
     const nextGenerationState = beginConversationGeneration(conversation.id, {
       generatingByConversation: state.generatingByConversation,

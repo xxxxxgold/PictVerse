@@ -37,6 +37,7 @@ export function PreviewModal({
   onClose: () => void
 }): JSX.Element {
   const { addHistoryAsReference, toggleFavorite, notify } = useAppStore()
+  const pendingMask = useAppStore((state) => state.pendingMask)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const artRef = useRef<HTMLDivElement | null>(null)
   const [currentId, setCurrentId] = useState(initialItem.id)
@@ -306,6 +307,7 @@ export function PreviewModal({
         <ReferencePreviewModal
           initialId={previewReferenceId}
           references={item.referenceImages}
+          mask={pendingMask}
           onClose={() => setPreviewReferenceId(null)}
         />
       ) : null}

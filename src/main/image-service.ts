@@ -10,6 +10,7 @@ import {
   supportsImageInputFidelity
 } from '@shared/image-options'
 import { elapsedMs } from '@shared/duration'
+import { moveMaskReferenceFirst } from '@shared/mask'
 import { conversationDirName } from './conversation-dir'
 import type {
   GenerateImageInput,
@@ -340,7 +341,8 @@ export class ImageService {
       const maskBuffer = Buffer.from(input.maskPngBase64.replace(/^data:image\/png;base64,/, ''), 'base64')
       formData.set('mask', new Blob([maskBuffer], { type: 'image/png' }), 'mask.png')
     }
-    for (const referenceImage of referenceImages) {
+    // mask 只对第一张 image 生效，带遮罩的参考图必须排在前面
+    for (const referenceImage of moveMaskReferenceFirst(referenceImages, input.maskReferenceId)) {
       if (!referenceImage.filePath) continue
       const fileBuffer = readFileSync(referenceImage.filePath)
       formData.append('image[]', new Blob([fileBuffer], { type: referenceImage.mimeType }), referenceImage.name)

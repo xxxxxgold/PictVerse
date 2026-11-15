@@ -44,11 +44,18 @@ export type GenerateImageInput = {
   seed?: number
   providerId?: string
   maskPngBase64?: string
+  /** 遮罩对应的参考图 id：images/edits 只把 mask 作用在第一张图上，发送时需要把它排到最前 */
+  maskReferenceId?: string
   referenceImageIds?: string[]
 }
 
 export type PromptAssistantProtocol = 'chat' | 'responses' | 'anthropic'
 
+/**
+ * 提示词助手的完整配置。
+ * 与 @shared/prompt-assistant 的 PromptAssistConfig 保持同构；
+ * 上下文/输出长度存用户输入原文（如 1m / 1k / 1000），请求前按语义解析。
+ */
 export type PromptAssistantConfig = {
   /** 服务商名称，仅展示用 */
   name: string

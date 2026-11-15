@@ -2,14 +2,18 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { ReferenceImage } from '@shared/types'
+import type { PendingMask } from '@renderer/store/app-store'
 
 export function ReferencePreviewModal({
   initialId,
   references,
+  mask,
   onClose
 }: {
   initialId: string
   references: ReferenceImage[]
+  /** 当前已应用的遮罩：缩略图上有，大图预览也要能看到 */
+  mask?: PendingMask | null
   onClose: () => void
 }): JSX.Element {
   const [currentId, setCurrentId] = useState(initialId)
@@ -53,7 +57,17 @@ export function ReferencePreviewModal({
           >
             <ChevronLeft size={24} />
           </button>
-          <img src={src} alt={reference.name} />
+          <div className="reference-preview-frame">
+            <img src={src} alt={reference.name} />
+            {mask?.referenceId === reference?.id ? (
+              <img
+                className="reference-preview-mask"
+                src={mask.previewUrl}
+                alt="遮罩范围"
+                title="遮罩范围（青色为需要重绘的区域）"
+              />
+            ) : null}
+          </div>
           <button
             className="modal-nav next"
             disabled={!canGoNext}
