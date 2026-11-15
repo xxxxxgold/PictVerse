@@ -63,12 +63,16 @@ export type PromptAssistantConfig = {
   apiKey: string
   model: string
   protocol: PromptAssistantProtocol
-  /** 请求携带的上下文长度（K tokens），0 表示跟随默认 */
-  contextK: number
-  /** 最大输出 tokens，0 表示跟随默认 */
-  maxOutputTokens: number
-  /** 思考强度：关闭 / 低 / 中 / 高；chat 协议映射 reasoning_effort，anthropic 映射 thinking budget */
-  reasoning: 'off' | 'low' | 'medium' | 'high'
+  /** 上下文长度输入原文（1m=100万 / 1k=1千 / 纯数字=本身），空表示跟随默认 */
+  contextTokenText: string
+  /** 输出长度输入原文（1m=100万 / 1k=1千 / 纯数字=本身），空表示跟随默认 */
+  maxOutputTokenText: string
+  /** 思考强度：off / low / medium / high / xhigh / max；chat 协议映射 reasoning_effort，anthropic 映射 thinking budget */
+  reasoning: 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  /** 角色提示词：助手人设/风格，空时回退内置 */
+  rolePrompt: string
+  /** 系统提示词：整段指令，空时回退内置 */
+  systemPrompt: string
 }
 
 export type PromptAssistInput = {

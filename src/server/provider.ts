@@ -1,4 +1,5 @@
 import { buildImageEditEndpoint, buildImageEndpoint, buildImageRequestBody, getDefaultImageSize } from '../shared/image-options'
+import { DEFAULT_MAX_OUTPUT_TOKENS } from '../shared/prompt-assistant'
 import type { GenerateImageInput } from '../shared/types'
 import type { ServerEnv } from './env'
 
@@ -106,7 +107,7 @@ export async function proxyPrompt(env: ServerEnv, instruction: string): Promise<
           { role: 'system', content: '你是专业图像生成提示词助手，输出简洁、具体、可直接用于生成图片的提示词。' },
           { role: 'user', content: instruction }
         ],
-        max_output_tokens: 700
+        max_output_tokens: DEFAULT_MAX_OUTPUT_TOKENS
       })
     })
     const payload = await readProxyResponse(response, '提示词生成失败') as ResponsesApiPayload

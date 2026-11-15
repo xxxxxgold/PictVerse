@@ -1035,8 +1035,27 @@ html.dark .grain {
 .provider-actions .ghost:hover { color: var(--ink); background: var(--surface-3); }
 
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.hint-mini { font-size: 11px; color: var(--muted); }
+/*
+ * 三列参数：标签文字长短不同会折成 1~2 行，若各列独立排版，
+ * 输入框会随标签高度错位（实测控件顶部相差 19px）。
+ * 用 subgrid 让三列共享「标签 / 控件 / 提示」三条行轨道，行首自然对齐。
+ */
+.three-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: 12px;
+  row-gap: 5px;
+}
+.three-col > .field {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+  gap: 0;
+  margin-bottom: 0;
+}
+.three-col > .field > span { align-self: start; }
+.hint-mini { font-size: 11px; color: var(--muted); line-height: 1.5; }
 
 .modellist {
   display: flex;
@@ -2754,6 +2773,19 @@ textarea {
 
 .settings-select .gallery-select-trigger {
   width: 100%;
+}
+
+/* 提示词助手：模型可输入选择框与多行提示词文本域 */
+.settings-select.editable-model .editable-select-input {
+  width: 100%;
+}
+
+.settings-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 44px;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
 .gallery-tools .gallery-select {

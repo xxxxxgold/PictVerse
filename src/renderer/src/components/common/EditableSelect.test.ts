@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { canCreateEditableOption, normalizeEditableOptions, toggleEditableMultiValue } from './EditableSelect'
+import {
+  canCreateEditableOption,
+  filterEditableOptionsForQuery,
+  normalizeEditableOptions,
+  toggleEditableMultiValue
+} from './EditableSelect'
 
 describe('editable select helpers', () => {
   it('only recommends creating an option when input is non-empty and no candidate matches', () => {
@@ -32,5 +37,22 @@ describe('editable select helpers', () => {
     expect(toggleEditableMultiValue(['广告'], '肖像')).toEqual(['广告', '肖像'])
     expect(toggleEditableMultiValue(['广告', '肖像'], '广告')).toEqual(['肖像'])
     expect(toggleEditableMultiValue(['广告'], ' 广告 ')).toEqual([])
+  })
+
+  it('shows every candidate when the box is not being searched', () => {
+    // 聚焦时输入框里是已选中的值，不能拿它过滤，否则「获取到 5 个模型只显示 1 个」
+    const options = normalizeEditableOptions(['gpt-6.1-sol', 'gpt-6.1-luna', 'gpt-5.5', 'o4-mini', 'claude-sonnet'])
+    expect(filterEditableOptionsForQuery(options, 'gpt-6.1-sol', false)).toHaveLength(5)
+    // 真正输入后才收窄
+    expect(filterEditableOptionsForQuery(options, 'gpt-6.1', true).map((o) => o.value)).toEqual(['gpt-6.1-sol', 'gpt-6.1-luna'])
+    expect(filterEditableOptionsForQuery(options, 'gpt-6.1-sol', true).map((o) => o.value)).toEqual(['gpt-6.1-sol'])
+  })
+
+  it('keeps the selected option visible in the unfiltered list', () => {
+    // 未搜索时列表完整，当前选中项一定在里面（否则用户看不到自己的选择）
+    const options = normalizeEditableOptions(['gpt-6.1-sol', 'gpt-6.1-luna', 'gpt-5.5'])
+    const shown = filterEditableOptionsForQuery(options, 'gpt-5.5', false)
+    expect(shown.map((o) => o.value)).toContain('gpt-5.5')
+    expect(shown).toHaveLength(3)
   })
 })

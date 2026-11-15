@@ -3,9 +3,15 @@ import {
   buildContextBudgetNote,
   buildPromptHeaders,
   buildPromptRequestBody,
+  buildSystemPrompt,
+  extractMaxTokenLimit,
   normalizePromptAssistConfig,
+  parseTokenAmount,
+  resolveMaxOutputTokens,
+  shouldRetryWithLegacy,
   PROMPT_PROTOCOL_ENDPOINTS,
-  type PromptAssistConfig
+  type PromptAssistConfig,
+  type PromptWireMode
 } from '@shared/prompt-assistant'
 import type { SettingsStore } from './settings'
 
@@ -24,8 +30,6 @@ type AnthropicPayload = {
   content?: Array<{ type?: string; text?: string }>
   error?: { message?: string }
 }
-
-const SYSTEM_PROMPT = '你是专业图像生成提示词助手，输出简洁、具体、可直接用于生成图片的提示词。'
 
 export class PromptService {
   constructor(private readonly settings: SettingsStore) {}
@@ -58,14 +62,40 @@ export class PromptService {
     if (!config.apiKey) throw new Error('提示词服务的 API Key 尚未配置，请到设置 → 提示词助手填写。')
 
     const endpoint = PROMPT_PROTOCOL_ENDPOINTS[config.protocol](config.baseURL)
-    const system = SYSTEM_PROMPT + buildContextBudgetNote(config)
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: buildPromptHeaders(config),
-      body: JSON.stringify(buildPromptRequestBody(config, system, instruction))
-    })
-    const responseText = await response.text()
-    const text = extractResponseText(config.protocol, responseText)
+    // 只有用户显式填了上下文才注入预算注记；默认 256k 不该变成「请保持紧凑」的噪音
+    const explicitContextTokens = parseTokenAmount(config.contextTokenText) ?? 0
+    const system = buildSystemPrompt(config) + buildContextBudgetNote(explicitContextTokens)
+
+    const attempt = async (wire: PromptWireMode, maxTokensOverride?: number) => {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: buildPromptHeaders(config),
+        body: JSON.stringify(buildPromptRequestBody(config, system, instruction, wire, maxTokensOverride))
+      })
+      return { response, responseText: await response.text() }
+    }
+
+    let wire: PromptWireMode = 'modern'
+    let { response, responseText } = await attempt(wire)
+    let message = extractResponseText(config.protocol, responseText)
+
+    // 输出上限超过模型能力时，按服务端给出的上限收敛重试一次（沿用当前写法）
+    if (!response.ok && (response.status === 400 || response.status === 422)) {
+      const limit = extractMaxTokenLimit(message)
+      if (limit && limit < resolveMaxOutputTokens(config)) {
+        ;({ response, responseText } = await attempt(wire, limit))
+        message = extractResponseText(config.protocol, responseText)
+      }
+    }
+
+    // 老模型 / 老网关不认新参数时，按 legacy 写法重试一次
+    if (!response.ok && shouldRetryWithLegacy(config.protocol, response.status, message)) {
+      wire = 'legacy'
+      ;({ response, responseText } = await attempt(wire))
+      message = extractResponseText(config.protocol, responseText)
+    }
+
+    const text = message
 
     if (!response.ok) {
       throw new Error(text || `提示词生成失败：HTTP ${response.status}`)

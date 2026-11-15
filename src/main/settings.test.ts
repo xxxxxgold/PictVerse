@@ -18,7 +18,7 @@ describe('settings store', () => {
 
     expect(store.getPublicSettings()).toMatchObject({
       defaultModel: 'gpt-image-2.6',
-      promptModel: 'gpt-5.4-mini'
+      promptModel: 'gpt-6.1-sol'
     })
   })
 

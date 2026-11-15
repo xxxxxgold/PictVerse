@@ -15,13 +15,14 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@renderer/store/app-store'
 import { GallerySelect } from '@renderer/components/gallery/GallerySelect'
+import { EditableSelect } from '@renderer/components/common/EditableSelect'
 import { appVersion, repositoryUrl } from '@shared/app-version'
 import type { CapabilityOverride, PricingMode, Provider, PromptAssistantProtocol } from '@shared/types'
 import {
+  buildModelListHeaders,
   DEFAULT_PROMPT_ASSIST_CONFIG,
+  isAssistantModelChosen,
   normalizePromptAssistConfig,
-  PROMPT_CONTEXT_OPTIONS,
-  PROMPT_OUTPUT_OPTIONS,
   PROMPT_REASONING_OPTIONS,
   type PromptAssistConfig
 } from '@shared/prompt-assistant'
@@ -59,7 +60,8 @@ function readAssistantModels(): string[] {
 function readAssistantConfig(): AssistantConfig {
   try {
     const raw = window.localStorage.getItem(ASSISTANT_STORAGE_KEY)
-    if (raw) return { ...emptyAssistant, ...(JSON.parse(raw) as Partial<AssistantConfig>) }
+    // normalize 负责旧字段迁移（contextK / maxOutputTokens），避免默认值覆盖旧配置
+    if (raw) return normalizePromptAssistConfig(JSON.parse(raw))
   } catch {
     /* 忽略损坏的本地配置 */
   }
@@ -123,6 +125,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
   const [assistantDraft, setAssistantDraft] = useState<AssistantConfig | null>(readAssistantConfig())
   const [assistantModels, setAssistantModels] = useState<string[]>(readAssistantModels)
   const [assistantFetching, setAssistantFetching] = useState(false)
+  const [assistantModelTouched, setAssistantModelTouched] = useState(false)
   const [draft, setDraft] = useState<Provider | null>(null)
   const [models, setModels] = useState<string[]>([])
   const [newModel, setNewModel] = useState('')
@@ -157,8 +160,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
     }
     setAssistantFetching(true)
     try {
-      const headers: Record<string, string> = { Accept: 'application/json' }
-      if (draft.apiKey) headers.Authorization = `Bearer ${draft.apiKey}`
+      // anthropic 原生接口只认 x-api-key + anthropic-version，其余走 Bearer
+      const headers = buildModelListHeaders({ protocol: draft.protocol, apiKey: draft.apiKey })
       const response = await fetch(`${draft.baseURL.trim().replace(/\/+$/, '')}/v1/models`, { headers })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const payload: unknown = await response.json()
@@ -188,17 +191,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
     } finally {
       setAssistantFetching(false)
     }
-  }
-
-  const saveAssistant = () => {
-    if (!assistantDraft) return
-    try {
-      window.localStorage.setItem(ASSISTANT_STORAGE_KEY, JSON.stringify(assistantDraft))
-    } catch {
-      /* 存储失败时静默 */
-    }
-    void updateSettings({ promptModel: assistantDraft.model })
-    notify('提示词服务已保存')
   }
 
   const handleFetch = async () => {
@@ -234,6 +226,38 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
   const draftCaps = draft
     ? resolveModelCapabilities(draft.defaultModel, draft)
     : { mask: false, gif: false, svg: false }
+
+  /**
+   * 模型输入框显示值：未获取过模型列表、未被编辑且仍是默认模型时显示占位，
+   * 避免把内置默认模型当成「已选好」展示（用户 2026-11-13 反馈）。
+   * 候选列表非空不代表默认模型有效（用户 2026-11-15 反馈：密钥拉到的模型里没有
+   * gpt-6.1-sol，框里却仍显示它），因此改为按「是否真正被选定」判断。
+   */
+  const assistantModelDisplayValue = isAssistantModelChosen(
+    assistantDraft?.model,
+    assistantModels,
+    assistantModelTouched
+  )
+    ? assistantDraft?.model || ''
+    : ''
+
+  const saveAssistant = () => {
+    if (!assistantDraft) return
+    try {
+      window.localStorage.setItem(ASSISTANT_STORAGE_KEY, JSON.stringify(assistantDraft))
+    } catch {
+      /* 存储失败时静默 */
+    }
+    // 模型未真正选定时不写 promptModel：否则内置默认模型会被当成用户选择落库，
+    // 真正发请求时带上服务端不认识的模型名，直接报错。
+    // 但 Base URL / API Key 等其余字段照常保存，不因缺模型而整体失败。
+    if (!isAssistantModelChosen(assistantDraft.model, assistantModels, assistantModelTouched)) {
+      notify('服务配置已保存，但模型未写入：请先选择或输入模型')
+      return
+    }
+    void updateSettings({ promptModel: assistantDraft.model.trim() })
+    notify('提示词服务已保存')
+  }
 
   return createPortal(
     <div
@@ -672,15 +696,17 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                   <label className="field">
                     <span>模型</span>
                     <div className="model-add">
-                      <GallerySelect
-                        value={assistantDraft?.model || ''}
-                        options={(assistantModels.length
-                          ? assistantModels
-                          : [assistantDraft?.model || DEFAULT_PROMPT_ASSIST_CONFIG.model]
-                        ).filter(Boolean).map((m) => ({ value: m, label: m }))}
+                      <EditableSelect
+                        value={assistantModelDisplayValue}
+                        options={assistantModels.filter(Boolean).map((m) => ({ value: m, label: m }))}
                         ariaLabel="提示词模型"
-                        className="settings-select"
-                        onChange={(model) => setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), model }))}
+                        placeholder="输入或获取模型"
+                        allowCreate
+                        className="settings-select editable-model"
+                        onChange={(model) => {
+                          setAssistantModelTouched(true)
+                          setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), model }))
+                        }}
                       />
                       <button
                         className="btn-ghost-border"
@@ -708,32 +734,30 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
 
                 <div className="three-col">
                   <label className="field">
-                    <span>上下文（K tokens）</span>
-                    <GallerySelect
-                      value={assistantDraft?.contextK ?? 0}
-                      options={PROMPT_CONTEXT_OPTIONS.map((value) => ({
-                        value,
-                        label: value === 0 ? '默认' : `${value}K`
-                      }))}
-                      ariaLabel="上下文长度"
-                      className="settings-select"
-                      onChange={(contextK) => setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), contextK }))}
+                    <span>上下文（tokens）</span>
+                    <input
+                      className="input-control"
+                      placeholder="256k（默认）"
+                      aria-label="上下文长度"
+                      value={assistantDraft?.contextTokenText ?? ''}
+                      onChange={(e) =>
+                        setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), contextTokenText: e.target.value }))
+                      }
                     />
+                    <em className="hint-mini">1m=100万，1k=1千，纯数字直填，留空跟随默认 256k</em>
                   </label>
                   <label className="field">
                     <span>输出长度（tokens）</span>
-                    <GallerySelect
-                      value={assistantDraft?.maxOutputTokens ?? 700}
-                      options={PROMPT_OUTPUT_OPTIONS.map((value) => ({
-                        value,
-                        label: value === 0 ? '默认' : String(value)
-                      }))}
-                      ariaLabel="输出长度"
-                      className="settings-select"
-                      onChange={(maxOutputTokens) =>
-                        setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), maxOutputTokens }))
+                    <input
+                      className="input-control"
+                      placeholder="32k（默认）"
+                      aria-label="输出长度"
+                      value={assistantDraft?.maxOutputTokenText ?? ''}
+                      onChange={(e) =>
+                        setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), maxOutputTokenText: e.target.value }))
                       }
                     />
+                    <em className="hint-mini">同上：1m / 1k / 1000，留空跟随默认 32k</em>
                   </label>
                   <label className="field">
                     <span>思考强度</span>
@@ -746,6 +770,27 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
                     />
                   </label>
                 </div>
+
+                <label className="field">
+                  <span>角色提示词（人设 / 风格，可留空）</span>
+                  <textarea
+                    className="input-control settings-textarea"
+                    rows={2}
+                    placeholder="例如：资深概念设计师，用词精炼、画面感强"
+                    value={assistantDraft?.rolePrompt ?? ''}
+                    onChange={(e) => setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), rolePrompt: e.target.value }))}
+                  />
+                </label>
+                <label className="field">
+                  <span>系统提示词（整体指令，可留空）</span>
+                  <textarea
+                    className="input-control settings-textarea"
+                    rows={3}
+                    placeholder="留空使用内置：输出简洁、具体、可直接用于生成图片的提示词。"
+                    value={assistantDraft?.systemPrompt ?? ''}
+                    onChange={(e) => setAssistantDraft((cur) => ({ ...(cur || emptyAssistant), systemPrompt: e.target.value }))}
+                  />
+                </label>
 
                 <div className="provider-actions">
                   <button className="btn-primary" onClick={saveAssistant}>

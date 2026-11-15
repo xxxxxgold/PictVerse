@@ -57,10 +57,20 @@ export function EditableSelect({
 }): JSX.Element {
   const [inputValue, setInputValue] = useState(value)
   const [open, setOpen] = useState(false)
+  /**
+   * 是否处于「用户正在输入筛选」状态。
+   * 聚焦时输入框里是已选中的值，若直接按它过滤，下拉就只剩当前这一项，
+   * 用户看不到其他候选（例如刚拉取到的 5 个模型只显示 1 个）。
+   * 因此只有用户真正改过输入才收窄列表。
+   */
+  const [searching, setSearching] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const normalizedOptions = useMemo(() => normalizeEditableOptions(options), [options])
-  const filteredOptions = useMemo(() => filterEditableOptions(normalizedOptions, inputValue), [inputValue, normalizedOptions])
-  const canCreate = canCreateEditableOption(inputValue, normalizedOptions, allowCreate)
+  const filteredOptions = useMemo(
+    () => filterEditableOptionsForQuery(normalizedOptions, inputValue, searching),
+    [inputValue, normalizedOptions, searching]
+  )
+  const canCreate = searching && canCreateEditableOption(inputValue, normalizedOptions, allowCreate)
 
   useEffect(() => {
     setInputValue(value)
@@ -73,6 +83,7 @@ export function EditableSelect({
     if (!normalized) return
     onChange(normalized)
     setInputValue(normalized)
+    setSearching(false)
     setOpen(false)
   }
 
@@ -83,10 +94,14 @@ export function EditableSelect({
         value={inputValue}
         aria-label={ariaLabel}
         placeholder={placeholder}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true)
+          setSearching(false)
+        }}
         onChange={(event) => {
           setInputValue(event.target.value)
           onChange(event.target.value)
+          setSearching(true)
           setOpen(true)
         }}
         onKeyDown={(event) => {
@@ -101,7 +116,16 @@ export function EditableSelect({
       {open ? (
         <div className="editable-select-menu" role="listbox" aria-label={ariaLabel}>
           {canCreate ? (
-            <button type="button" className="editable-select-option create" onClick={() => commit(inputValue)}>
+            <button
+              type="button"
+              className="editable-select-option create"
+              onPointerDown={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                commit(inputValue)
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
               <span>新增「{inputValue.trim()}」</span>
             </button>
           ) : null}
@@ -114,7 +138,17 @@ export function EditableSelect({
                 className={`editable-select-option ${selected ? 'selected' : ''}`}
                 role="option"
                 aria-selected={selected}
-                onClick={() => commit(option.value)}
+                /**
+                 * 必须用 pointerdown + preventDefault：
+                 * 若用 onClick，点击时输入框先失焦、菜单关闭后焦点又回到输入框，
+                 * 触发 onFocus 把菜单重新打开（表现为「点了选项但不消失」）。
+                 */
+                onPointerDown={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  commit(option.value)
+                }}
+                onClick={(event) => event.stopPropagation()}
               >
                 <span>{option.label}</span>
                 {selected ? <Check size={13} /> : null}
@@ -230,6 +264,18 @@ function filterEditableOptions(options: EditableOption[], query: string): Editab
   const normalizedQuery = query.trim().toLowerCase()
   if (!normalizedQuery) return options
   return options.filter((option) => option.label.toLowerCase().includes(normalizedQuery) || option.value.toLowerCase().includes(normalizedQuery))
+}
+
+/**
+ * 下拉候选的计算入口：只有用户真正在输入（searching）时才按输入收窄，
+ * 否则一律展示全部候选。聚焦时输入框里是已选中的值，用它过滤会让候选只剩一项。
+ */
+export function filterEditableOptionsForQuery(
+  options: EditableOption[],
+  query: string,
+  searching: boolean
+): EditableOption[] {
+  return searching ? filterEditableOptions(options, query) : options
 }
 
 function containsEditableValue(values: string[], value: string): boolean {
