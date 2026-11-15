@@ -279,6 +279,8 @@ app.whenReady().then(() => {
   const dataDir = getDataDir()
   database = new AppDatabase(dataDir)
   database.recoverInterruptedRuns()
+  // 旧版本删除会话/参考图时只删关联表，存量库里有孤儿行与孤儿文件；启动时收一次
+  database.cleanupOrphanedReferences()
   settings = new SettingsStore(join(dataDir, 'settings.json'), database.imagesDir)
   database.setExtraImageRoot(settings.getPublicSettings().imagesRoot || null)
   imageService = new ImageService(database, settings)

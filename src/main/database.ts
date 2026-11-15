@@ -176,9 +176,18 @@ export class AppDatabase {
   }
 
   deleteConversation(id: string): void {
-    this.db.prepare('update image_history set conversation_id = null where conversation_id = ?').run(id)
-    this.db.prepare('delete from generation_runs where conversation_id = ?').run(id)
-    this.db.prepare('delete from conversations where id = ?').run(id)
+    // 参考图属于会话：删会话必须连带解除关联、删行、删磁盘文件，
+    // 否则每删一个带参考图的会话都会留下 DB 行与最多 8×20MB 的孤儿文件。
+    const referenceIds = this.listConversationReferences(id).map((reference) => reference.id)
+    const transaction = this.db.transaction(() => {
+      this.db.prepare('update image_history set conversation_id = null where conversation_id = ?').run(id)
+      this.db.prepare('delete from generation_run_references where run_id in (select id from generation_runs where conversation_id = ?)').run(id)
+      this.db.prepare('delete from generation_runs where conversation_id = ?').run(id)
+      this.db.prepare('delete from conversation_reference_images where conversation_id = ?').run(id)
+      this.db.prepare('delete from conversations where id = ?').run(id)
+    })
+    transaction()
+    for (const referenceId of referenceIds) this.deleteReferenceImageIfUnused(referenceId)
   }
 
   insertRun(input: Omit<GenerationRun, 'items' | 'referenceImages'> & { referenceImages?: ReferenceImage[] }): GenerationRun {
@@ -200,6 +209,70 @@ export class AppDatabase {
       .prepare('update generation_runs set status = ?, error_message = ?, error_details = ?, duration_ms = ? where id = ?')
       .run(next.status, next.errorMessage, next.errorDetails, next.durationMs, id)
     return this.getRun(id) || next
+  }
+
+  /**
+   * 一次性清理历史版本遗留的孤儿数据（启动时调用）。
+   *
+   * 旧版 deleteConversation / removeReferenceFromConversation 只删关联表，
+   * 存量用户库里因此会留下：指向已删会话的关联行、run、历史项，
+   * 以及没有任何会话引用的参考图行与磁盘文件。这里把它们一次性收干净。
+   */
+  cleanupOrphanedReferences(): { rows: number; files: number } {
+    // 先清悬空关联行：否则「指向已删会话的关联」会把本该回收的参考图判成仍在使用
+    const transaction = this.db.transaction(() => {
+      // 历史项保留（删会话的设计是解绑而非删除），只把悬空指针置空
+      this.db.prepare(`
+        update image_history set conversation_id = null
+        where conversation_id is not null
+          and conversation_id not in (select id from conversations)
+      `).run()
+      // 会话已不存在的 run 属于脏数据，直接删；其参考图快照随之清理
+      this.db.prepare(`
+        delete from generation_runs
+        where conversation_id not in (select id from conversations)
+      `).run()
+      this.db.prepare(`
+        delete from conversation_reference_images
+        where conversation_id not in (select id from conversations)
+      `).run()
+      this.db.prepare(`
+        delete from generation_run_references
+        where run_id not in (select id from generation_runs)
+      `).run()
+    })
+    transaction()
+
+    const orphanIds = this.db
+      .prepare(`
+        select id from reference_images
+        where id not in (select reference_image_id from conversation_reference_images)
+          and id not in (select reference_image_id from generation_run_references)
+      `)
+      .all() as Array<{ id: string }>
+
+    let rows = 0
+    let files = 0
+    for (const { id } of orphanIds) {
+      const row = this.db.prepare('select file_path from reference_images where id = ?').get(id) as
+        | { file_path: string | null }
+        | undefined
+      this.db.prepare('delete from reference_images where id = ?').run(id)
+      rows += 1
+      const filePath = row?.file_path
+      if (!filePath) continue
+      const resolved = resolve(filePath)
+      if (!isPathInside(resolve(this.referenceImagesDir), resolved)) continue
+      try {
+        if (existsSync(resolved)) {
+          unlinkSync(resolved)
+          files += 1
+        }
+      } catch {
+        // 文件被占用：行已清掉，残留文件不影响功能
+      }
+    }
+    return { rows, files }
   }
 
   recoverInterruptedRuns(now = new Date()): number {
@@ -359,7 +432,40 @@ export class AppDatabase {
     this.db
       .prepare('delete from conversation_reference_images where conversation_id = ? and reference_image_id = ?')
       .run(conversationId, referenceImageId)
+    // 「移除」对用户意味着这张参考图不再存在，行与文件都要回收；
+    // 仍被其它会话或历史 run 引用时保留，避免把别人的图删掉。
+    this.deleteReferenceImageIfUnused(referenceImageId)
     return this.compactConversationReferencePositions(conversationId)
+  }
+
+  /**
+   * 参考图行 + 磁盘文件的回收守卫。
+   * 只要还有会话关联或历史 run 引用，就说明这张图仍在使用，跳过删除。
+   */
+  private deleteReferenceImageIfUnused(referenceImageId: string): void {
+    const stillAttached = this.db
+      .prepare('select 1 from conversation_reference_images where reference_image_id = ? limit 1')
+      .get(referenceImageId)
+    if (stillAttached) return
+    const stillReferencedByRun = this.db
+      .prepare('select 1 from generation_run_references where reference_image_id = ? limit 1')
+      .get(referenceImageId)
+    if (stillReferencedByRun) return
+
+    const row = this.db.prepare('select file_path from reference_images where id = ?').get(referenceImageId) as
+      | { file_path: string | null }
+      | undefined
+    this.db.prepare('delete from reference_images where id = ?').run(referenceImageId)
+    const filePath = row?.file_path
+    if (!filePath) return
+    const resolved = resolve(filePath)
+    // 只删 reference-images 目录内的文件，防止脏 DB 行把删除引到用户目录
+    if (!isPathInside(resolve(this.referenceImagesDir), resolved)) return
+    try {
+      if (existsSync(resolved)) unlinkSync(resolved)
+    } catch {
+      // 文件被占用或已删除：行已清掉，残留文件不影响功能
+    }
   }
 
   reorderConversationReferences(conversationId: string, referenceImageIds: string[]): ReferenceImage[] {
