@@ -49,7 +49,13 @@ export function SettingsPanel(): JSX.Element {
     if (group && !group.open) group.open = true
     // 等抽屉与折叠区完成布局后再滚动，避免按展开前的位置定位
     const scrollTimer = window.setTimeout(() => {
-      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      // 只滚参数面板自身。scrollIntoView 会连带滚动所有可滚动祖先（包括 .main），
+      // 抽屉滑入时 .main 因覆盖层外溢而有横向滚动范围，会把整个工作区横向拖走。
+      const rootRect = root.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const targetTop = targetRect.top - rootRect.top + root.scrollTop
+      const centeredTop = targetTop - (root.clientHeight - targetRect.height) / 2
+      root.scrollTo({ top: Math.max(0, centeredTop), behavior: 'smooth' })
       target.classList.add('param-flash')
     }, 90)
     const flashTimer = window.setTimeout(() => target.classList.remove('param-flash'), 1600)
