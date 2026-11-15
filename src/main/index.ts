@@ -51,11 +51,32 @@ function createWindow(): void {
   mainWindow = new BrowserWindow(createMainWindowOptions())
   mainWindow.setMenu(null)
 
+  // 最大化状态变化时推给渲染层，供最大化/还原图标切换。
+  // 必须挂在窗口实例上：registerWindowControls 执行时 mainWindow 尚未创建。
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximize-changed', true))
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximize-changed', false))
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+}
+
+function registerWindowControls(): void {
+  ipcMain.on('window:minimize', () => mainWindow?.minimize())
+  ipcMain.on('window:maximize-toggle', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+  })
+  ipcMain.on('window:close', () => mainWindow?.close())
+  ipcMain.on('window:is-maximized', (event) => {
+    event.returnValue = mainWindow?.isMaximized() ?? false
+  })
 }
 
 function registerImageProtocol(): void {
@@ -198,6 +219,7 @@ app.whenReady().then(() => {
   promptService = new PromptService(settings)
   registerImageProtocol()
   registerIpc()
+  registerWindowControls()
   createWindow()
 
   app.on('activate', () => {

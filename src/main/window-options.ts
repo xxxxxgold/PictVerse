@@ -12,12 +12,10 @@ export function createMainWindowOptions(): BrowserWindowConstructorOptions {
     icon: resolveWindowIconPath(),
     backgroundColor: '#f5f8f6',
     autoHideMenuBar: true,
+    // 隐藏系统标题栏：顶栏卡片兼作拖拽区，窗口控制按钮由 Topbar 自绘。
+    // 不用 titleBarOverlay：原生按钮画在窗口右上角，会压住顶栏卡片和「新建会话」，
+    // 且颜色写死、无法跟随深色主题。
     titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#f5f8f6',
-      symbolColor: '#0c1613',
-      height: 40
-    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

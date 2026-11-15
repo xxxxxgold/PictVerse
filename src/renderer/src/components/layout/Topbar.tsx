@@ -1,12 +1,17 @@
 import type { JSX } from 'react'
+import { useEffect, useState } from 'react'
 import {
   BookOpen,
+  Copy,
   Image as ImageIcon,
+  Minus,
   Moon,
   PencilLine,
   Plus,
   Settings,
-  Sun
+  Square,
+  Sun,
+  X
 } from 'lucide-react'
 import { useAppStore } from '@renderer/store/app-store'
 import { resolveActiveProvider } from '@shared/provider-selection'
@@ -30,6 +35,13 @@ export function Topbar(): JSX.Element {
     setSettingsModalOpen,
     providers
   } = useAppStore()
+  const windowApi = window.pictverse.window ?? null
+  const [isMaximized, setIsMaximized] = useState(() => windowApi?.isMaximized() ?? false)
+
+  useEffect(() => {
+    if (!windowApi) return
+    return windowApi.onMaximizeChange(setIsMaximized)
+  }, [windowApi])
 
   const conversation = conversations.find((item) => item.id === activeConversationId) || null
   const activeProvider = resolveActiveProvider(conversation?.providerId, providers)
@@ -91,6 +103,38 @@ export function Topbar(): JSX.Element {
         <Plus size={15} />
         新建会话
       </button>
+
+      {windowApi ? (
+        <div className="window-controls">
+          <button
+            className="win-btn"
+            title="最小化"
+            aria-label="最小化"
+            onClick={() => windowApi.minimize()}
+          >
+            <Minus size={14} strokeWidth={2.2} />
+          </button>
+          <button
+            className="win-btn"
+            data-win-state={isMaximized ? 'restored' : 'maximized'}
+            title={isMaximized ? '还原' : '最大化'}
+            aria-label={isMaximized ? '还原' : '最大化'}
+            onClick={() => windowApi.toggleMaximize()}
+          >
+            <span key={isMaximized ? 'restore' : 'max'} className="win-icon-in">
+              {isMaximized ? <Copy size={12} strokeWidth={2.2} /> : <Square size={12} strokeWidth={2.2} />}
+            </span>
+          </button>
+          <button
+            className="win-btn win-close"
+            title="关闭"
+            aria-label="关闭"
+            onClick={() => windowApi.close()}
+          >
+            <X size={14} strokeWidth={2.2} />
+          </button>
+        </div>
+      ) : null}
     </header>
   )
 }

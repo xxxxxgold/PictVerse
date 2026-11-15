@@ -5080,3 +5080,90 @@ textarea {
 .topbar input {
   -webkit-app-region: no-drag;
 }
+
+/* 顶栏右端自绘窗口控制按钮（替代原生 titleBarOverlay，可跟随主题） */
+/* 三个按钮收进一个独立的胶囊圆角标签，与顶栏其它按钮分开成组 */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+  height: 34px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-rest), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.window-controls .win-btn {
+  position: relative;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--spring);
+}
+.window-controls .win-btn svg {
+  transition: transform var(--dur-2) var(--spring);
+}
+/* 图标换装动画：最大化/还原切换时重新挂载触发 */
+.window-controls .win-btn .win-icon-in {
+  display: grid;
+  place-items: center;
+  animation: win-icon-in 180ms var(--spring) both;
+}
+@keyframes win-icon-in {
+  from { opacity: 0; transform: scale(0.55) rotate(-90deg); }
+  to { opacity: 1; transform: none; }
+}
+.window-controls .win-btn:hover {
+  background: var(--sel-soft-2);
+  color: var(--sel-text);
+}
+.window-controls .win-btn:hover svg {
+  transform: translateY(-1px) scale(1.08);
+}
+.window-controls .win-btn:active {
+  transform: scale(0.9);
+}
+.window-controls .win-btn.win-close:hover {
+  background: rgba(226, 88, 106, 0.16);
+  color: var(--rose);
+}
+.window-controls .win-btn.win-close:hover svg {
+  transform: translateY(-1px) scale(1.12) rotate(90deg);
+}
+
+/* ===== 越界防护 ===== */
+/* 顶栏：窄窗口下参数标签区可收缩，不把按钮组挤出边界 */
+.topbar .param-tags {
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.topbar .param-tags .ptag {
+  flex: none;
+}
+.topbar .spacer {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* 参数抽屉：内容超高时内部滚动，不再溢出容器 */
+.drawer > .inspector {
+  min-height: 0;
+  overflow: auto;
+}
+.drawer > .inspector > .config-stack {
+  flex: none;
+}

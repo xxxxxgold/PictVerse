@@ -65,6 +65,17 @@ const api: PictVerseAPI = {
   shell: {
     openPath: (filePath: string) => ipcRenderer.invoke('shell:open-path', filePath),
     openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url)
+  },
+  window: {
+    minimize: () => ipcRenderer.send('window:minimize'),
+    toggleMaximize: () => ipcRenderer.send('window:maximize-toggle'),
+    close: () => ipcRenderer.send('window:close'),
+    isMaximized: () => ipcRenderer.sendSync('window:is-maximized'),
+    onMaximizeChange: (callback: (isMaximized: boolean) => void) => {
+      const listener = (_event: unknown, isMaximized: boolean): void => callback(isMaximized)
+      ipcRenderer.on('window:maximize-changed', listener)
+      return () => ipcRenderer.removeListener('window:maximize-changed', listener)
+    }
   }
 }
 

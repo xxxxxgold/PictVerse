@@ -335,4 +335,13 @@ export type PictVerseAPI = {
     openPath: (filePath: string) => Promise<string>
     openExternal: (url: string) => Promise<void>
   }
+  /** 桌面版可用：自绘窗口控制（最小化/最大化/关闭）；Web 版未实现 */
+  window?: {
+    minimize: () => void
+    toggleMaximize: () => void
+    close: () => void
+    isMaximized: () => boolean
+    /** 订阅最大化状态变化，返回取消订阅函数 */
+    onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void
+  }
 }
