@@ -322,8 +322,11 @@ export class AppDatabase {
     const where: string[] = ['global_visible = 1']
     const params: Record<string, unknown> = {}
     if (options.query?.trim()) {
-      where.push('(prompt like @query or model like @query or size like @query)')
-      params.query = `%${options.query.trim()}%`
+      // 用户输入里的 % 与 _ 必须当普通字符：否则搜「%」会命中全部记录，
+      // 与「搜索」语义不符。转义符统一用 \，并在 SQL 里声明 escape。
+      const escaped = options.query.trim().replace(/[\\%_]/g, (char) => `\\${char}`)
+      where.push(`(prompt like @query escape '\\' or model like @query escape '\\' or size like @query escape '\\')`)
+      params.query = `%${escaped}%`
     }
     if (options.favoritesOnly) where.push('favorite = 1')
     const order = options.sort === 'oldest' ? 'asc' : 'desc'

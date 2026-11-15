@@ -33,6 +33,8 @@ const qualityOptions: Array<GallerySelectOption<'all' | PromptTemplate['quality'
 
 const FOLLOW_CONVERSATION_LABEL = '跟随会话'
 
+const pageSizeOptions = [10, 15, 20, 30, 50, 100]
+
 export function PromptLibraryPage(): JSX.Element {
   const { notify, applyPromptTemplate, providers, conversations, activeConversationId } = useAppStore()
   const [items, setItems] = useState<PromptLibraryItem[]>(() => getPromptLibraryItems())
@@ -43,6 +45,8 @@ export function PromptLibraryPage(): JSX.Element {
   const [model, setModel] = useState<'all' | string>('all')
   const [editingTemplate, setEditingTemplate] = useState<PromptLibraryEditorState | null>(null)
   const [providerModels, setProviderModels] = useState<string[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(15)
 
   const activeProviderId = useMemo(() => {
     const conversation = conversations.find((item) => item.id === activeConversationId) || null
@@ -105,6 +109,21 @@ export function PromptLibraryPage(): JSX.Element {
     () => filterPromptTemplates(items, { query: searchQuery, category, ratio, quality, model }),
     [category, items, model, quality, ratio, searchQuery]
   )
+
+  const pageCount = Math.max(1, Math.ceil(templates.length / pageSize))
+  const pageItems = useMemo(
+    () => templates.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, templates]
+  )
+
+  // 数据变化（筛选/搜索/增删）导致页数收缩时钳回最后一页；筛选条件变化时回第 1 页
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount))
+  }, [pageCount])
+
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, category, ratio, quality, model, pageSize])
 
   const refreshItems = () => setItems(getPromptLibraryItems())
 
@@ -192,8 +211,8 @@ export function PromptLibraryPage(): JSX.Element {
       </div>
 
       <div className="prompt-library-grid">
-        {templates.length === 0 ? <div className="empty-state grid-empty">暂无匹配模板</div> : null}
-        {templates.map((template) => (
+        {pageItems.length === 0 ? <div className="empty-state grid-empty">暂无匹配模板</div> : null}
+        {pageItems.map((template) => (
           <article
             key={template.id}
             className="prompt-template-card"
@@ -281,6 +300,27 @@ export function PromptLibraryPage(): JSX.Element {
           </article>
         ))}
       </div>
+
+      {templates.length > 0 ? (
+        <div className="gallery-pagination prompt-library-pagination">
+          <button disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+            上一页
+          </button>
+          <span>
+            {page} / {pageCount}
+          </span>
+          <button disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>
+            下一页
+          </button>
+          <GallerySelect
+            value={pageSize}
+            options={pageSizeOptions.map((value) => ({ value, label: `${value} 条/页` }))}
+            ariaLabel="每页数量"
+            className="page-size-select"
+            onChange={setPageSize}
+          />
+        </div>
+      ) : null}
 
       {editingTemplate ? (
         <PromptTemplateEditorModal
