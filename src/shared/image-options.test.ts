@@ -42,6 +42,83 @@ describe('image options', () => {
     expect(getImageSizeOptions('16:9').at(-1)?.value).toBe('3840x2160')
   })
 
+  it('keeps every size option inside the 4K UHD pixel ceiling', () => {
+    const CAP = 3840 * 2160
+    for (const ratio of IMAGE_RATIOS) {
+      for (const option of getImageSizeOptions(ratio)) {
+        const [width, height] = option.value.split('x').map(Number)
+        expect(Number.isInteger(width)).toBe(true)
+        expect(Number.isInteger(height)).toBe(true)
+        // 宽高必须都是 16 的整数倍，对齐主流扩散/编辑模型
+        expect(width % 16).toBe(0)
+        expect(height % 16).toBe(0)
+        // 像素不得越过 4K UHD 上限
+        expect(width * height).toBeLessThanOrEqual(CAP)
+      }
+    }
+  })
+
+  it('keeps every size option exactly proportional to its ratio', () => {
+    for (const ratio of IMAGE_RATIOS) {
+      const [rw, rh] = ratio.split(':').map(Number)
+      for (const option of getImageSizeOptions(ratio)) {
+        const [width, height] = option.value.split('x').map(Number)
+        expect(Math.abs(width / height - rw / rh)).toBeLessThan(1e-9)
+      }
+    }
+  })
+
+  it('offers a dense ladder covering 1K through 4K in every ratio', () => {
+    const CAP = 3840 * 2160
+    for (const ratio of IMAGE_RATIOS) {
+      const options = getImageSizeOptions(ratio)
+      // 每个比例至少 10 档，保证 1K~4K 之间有足够选择
+      expect(options.length).toBeGreaterThanOrEqual(10)
+      // 1K 到 4K 六档全覆盖，不允许断档
+      const tags = new Set(
+        options.filter((option) => !option.label.startsWith('标准')).map((option) => option.label.split(' ')[0])
+      )
+      for (const tag of ['1K', '1.5K', '2K', '2.5K', '3K', '4K']) {
+        expect(tags.has(tag)).toBe(true)
+      }
+      // 高端必须在像素上限内做到尽量满：顶档面积不低于上限的 96%
+      const areas = options.map((option) => {
+        const [width, height] = option.value.split('x').map(Number)
+        return width * height
+      })
+      expect(Math.max(...areas)).toBeGreaterThanOrEqual(CAP * 0.96)
+      // 档位按面积严格递增且不重复
+      expect(areas).toEqual([...areas].sort((a, b) => a - b))
+      expect(new Set(options.map((option) => option.value)).size).toBe(options.length)
+    }
+  })
+
+  it('keeps legacy size values so saved conversations and templates stay valid', () => {
+    const legacy: Record<string, string[]> = {
+      '1:1': ['1024x1024', '1536x1536', '2048x2048', '2560x2560'],
+      '3:2': ['1536x1024', '3072x2048'],
+      '2:3': ['1024x1536', '2048x3072'],
+      '4:3': ['1024x768', '1536x1152', '2048x1536', '3072x2304'],
+      '3:4': ['768x1024', '1152x1536', '1536x2048', '2304x3072'],
+      '16:9': ['1280x720', '1536x864', '1792x1008', '2048x1152', '2560x1440', '3072x1728', '3840x2160'],
+      '9:16': ['720x1280', '864x1536', '1008x1792', '1152x2048', '1440x2560', '1728x3072', '2160x3840'],
+      '21:9': ['1344x576', '1792x768', '2240x960', '2688x1152', '3136x1344', '3584x1536'],
+      '9:21': ['576x1344', '768x1792', '960x2240', '1152x2688', '1344x3136', '1536x3584']
+    }
+    for (const [ratio, values] of Object.entries(legacy)) {
+      const available = new Set(getImageSizeOptions(ratio as never).map((option) => option.value))
+      for (const value of values) expect(available.has(value)).toBe(true)
+    }
+  })
+
+  it('exposes exactly one standard anchor per ratio for the default size', () => {
+    for (const ratio of IMAGE_RATIOS) {
+      const standards = getImageSizeOptions(ratio).filter((option) => option.label.startsWith('标准'))
+      expect(standards).toHaveLength(1)
+      expect(getDefaultImageSize(ratio)).toBe(standards[0].value)
+    }
+  })
+
   it('exposes GPT and compatibility quality options', () => {
     expect(IMAGE_QUALITIES).toEqual(['auto', 'low', 'medium', 'high'])
     expect(IMAGE_QUALITY_LABELS).toEqual({

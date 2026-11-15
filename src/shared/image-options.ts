@@ -149,69 +149,129 @@ export type ImageSizeOption = {
 
 const imageSizeOptionsByRatio: Record<ImageRatio, ImageSizeOption[]> = {
   '1:1': [
+    { value: '976x976', label: '1K 976×976' },
     { value: '1024x1024', label: '标准 1024×1024' },
-    { value: '1536x1536', label: '高清 1536×1536' },
-    { value: '2048x2048', label: '2K 2048×2048' },
-    { value: '2560x2560', label: '高分 2560×2560' }
+    { value: '1104x1104', label: '1K 1104×1104' },
+    { value: '1248x1248', label: '1.5K 1248×1248' },
+    { value: '1392x1392', label: '1.5K 1392×1392' },
+    { value: '1536x1536', label: '1.5K 1536×1536' },
+    { value: '1776x1776', label: '2K 1776×1776' },
+    { value: '2048x2048', label: '2.5K 2048×2048' },
+    { value: '2272x2272', label: '2.5K 2272×2272' },
+    { value: '2560x2560', label: '3K 2560×2560' },
+    { value: '2880x2880', label: '4K 2880×2880' }
   ],
   '3:2': [
+    { value: '1200x800', label: '1K 1200×800' },
+    { value: '1344x896', label: '1K 1344×896' },
     { value: '1536x1024', label: '标准 1536×1024' },
-    { value: '3072x2048', label: '高分 3072×2048' }
+    { value: '1728x1152', label: '1.5K 1728×1152' },
+    { value: '1920x1280', label: '1.5K 1920×1280' },
+    { value: '2160x1440', label: '2K 2160×1440' },
+    { value: '2448x1632', label: '2K 2448×1632' },
+    { value: '2784x1856', label: '2.5K 2784×1856' },
+    { value: '3072x2048', label: '3K 3072×2048' },
+    { value: '3504x2336', label: '4K 3504×2336' }
   ],
   '2:3': [
+    { value: '800x1200', label: '1K 800×1200' },
+    { value: '896x1344', label: '1K 896×1344' },
     { value: '1024x1536', label: '标准 1024×1536' },
-    { value: '2048x3072', label: '高分 2048×3072' }
+    { value: '1152x1728', label: '1.5K 1152×1728' },
+    { value: '1280x1920', label: '1.5K 1280×1920' },
+    { value: '1440x2160', label: '2K 1440×2160' },
+    { value: '1632x2448', label: '2K 1632×2448' },
+    { value: '1856x2784', label: '2.5K 1856×2784' },
+    { value: '2048x3072', label: '3K 2048×3072' },
+    { value: '2336x3504', label: '4K 2336×3504' }
   ],
   '4:3': [
     { value: '1024x768', label: '标准 1024×768' },
-    { value: '1536x1152', label: '高清 1536×1152' },
-    { value: '2048x1536', label: '高分 2048×1536' },
-    { value: '3072x2304', label: '高分 3072×2304' }
+    { value: '1152x864', label: '1K 1152×864' },
+    { value: '1280x960', label: '1K 1280×960' },
+    { value: '1536x1152', label: '1.5K 1536×1152' },
+    { value: '1856x1392', label: '1.5K 1856×1392' },
+    { value: '2048x1536', label: '2K 2048×1536' },
+    { value: '2304x1728', label: '2K 2304×1728' },
+    { value: '2560x1920', label: '2.5K 2560×1920' },
+    { value: '2880x2160', label: '3K 2880×2160' },
+    { value: '3072x2304', label: '3K 3072×2304' },
+    { value: '3264x2448', label: '4K 3264×2448' }
   ],
   '3:4': [
     { value: '768x1024', label: '标准 768×1024' },
-    { value: '1152x1536', label: '高清 1152×1536' },
-    { value: '1536x2048', label: '高分 1536×2048' },
-    { value: '2304x3072', label: '高分 2304×3072' }
+    { value: '864x1152', label: '1K 864×1152' },
+    { value: '960x1280', label: '1K 960×1280' },
+    { value: '1152x1536', label: '1.5K 1152×1536' },
+    { value: '1392x1856', label: '1.5K 1392×1856' },
+    { value: '1536x2048', label: '2K 1536×2048' },
+    { value: '1728x2304', label: '2K 1728×2304' },
+    { value: '1920x2560', label: '2.5K 1920×2560' },
+    { value: '2160x2880', label: '3K 2160×2880' },
+    { value: '2304x3072', label: '3K 2304×3072' },
+    { value: '2448x3264', label: '4K 2448×3264' }
   ],
   '16:9': [
-    { value: '1280x720', label: '720P 1280×720' },
-    { value: '1536x864', label: '1536×864' },
+    { value: '1280x720', label: '1K 1280×720' },
+    { value: '1536x864', label: '1K 1536×864' },
     { value: '1792x1008', label: '标准 1792×1008' },
-    { value: '2048x1152', label: '2K 2048×1152' },
+    { value: '2048x1152', label: '1.5K 2048×1152' },
+    { value: '2304x1296', label: '2K 2304×1296' },
     { value: '2560x1440', label: '2K 2560×1440' },
-    { value: '3072x1728', label: '高分 3072×1728' },
+    { value: '2816x1584', label: '2.5K 2816×1584' },
+    { value: '3072x1728', label: '2.5K 3072×1728' },
+    { value: '3584x2016', label: '3K 3584×2016' },
     { value: '3840x2160', label: '4K 3840×2160' }
   ],
   '9:16': [
-    { value: '720x1280', label: '720P 720×1280' },
-    { value: '864x1536', label: '864×1536' },
+    { value: '720x1280', label: '1K 720×1280' },
+    { value: '864x1536', label: '1K 864×1536' },
     { value: '1008x1792', label: '标准 1008×1792' },
-    { value: '1152x2048', label: '2K 1152×2048' },
+    { value: '1152x2048', label: '1.5K 1152×2048' },
+    { value: '1296x2304', label: '2K 1296×2304' },
     { value: '1440x2560', label: '2K 1440×2560' },
-    { value: '1728x3072', label: '高分 1728×3072' },
+    { value: '1584x2816', label: '2.5K 1584×2816' },
+    { value: '1728x3072', label: '2.5K 1728×3072' },
+    { value: '2016x3584', label: '3K 2016×3584' },
     { value: '2160x3840', label: '4K 2160×3840' }
   ],
   '21:9': [
     { value: '1344x576', label: '标准 1344×576' },
-    { value: '1792x768', label: '高分 1792×768' },
-    { value: '2240x960', label: '高分 2240×960' },
-    { value: '2688x1152', label: '高分 2688×1152' },
-    { value: '3136x1344', label: '高分 3136×1344' },
-    { value: '3584x1536', label: '高分 3584×1536' }
+    { value: '1568x672', label: '1K 1568×672' },
+    { value: '1792x768', label: '1K 1792×768' },
+    { value: '2016x864', label: '1.5K 2016×864' },
+    { value: '2240x960', label: '1.5K 2240×960' },
+    { value: '2464x1056', label: '1.5K 2464×1056' },
+    { value: '2688x1152', label: '2K 2688×1152' },
+    { value: '3136x1344', label: '2.5K 3136×1344' },
+    { value: '3584x1536', label: '3K 3584×1536' },
+    { value: '3920x1680', label: '3K 3920×1680' },
+    { value: '4368x1872', label: '4K 4368×1872' }
   ],
   '9:21': [
     { value: '576x1344', label: '标准 576×1344' },
-    { value: '768x1792', label: '高分 768×1792' },
-    { value: '960x2240', label: '高分 960×2240' },
-    { value: '1152x2688', label: '高分 1152×2688' },
-    { value: '1344x3136', label: '高分 1344×3136' },
-    { value: '1536x3584', label: '高分 1536×3584' }
+    { value: '672x1568', label: '1K 672×1568' },
+    { value: '768x1792', label: '1K 768×1792' },
+    { value: '864x2016', label: '1.5K 864×2016' },
+    { value: '960x2240', label: '1.5K 960×2240' },
+    { value: '1056x2464', label: '1.5K 1056×2464' },
+    { value: '1152x2688', label: '2K 1152×2688' },
+    { value: '1344x3136', label: '2.5K 1344×3136' },
+    { value: '1536x3584', label: '3K 1536×3584' },
+    { value: '1680x3920', label: '3K 1680×3920' },
+    { value: '1872x4368', label: '4K 1872×4368' }
   ]
 }
 
+/** 脏比例兜底：DB / 旧版本可能存下不在枚举里的值，读取时统一收敛到 1:1 */
+export function normalizeImageRatio(value: unknown): ImageRatio {
+  return IMAGE_RATIOS.includes(value as ImageRatio) ? (value as ImageRatio) : '1:1'
+}
+
 export function getImageSizeOptions(ratio: ImageRatio): ImageSizeOption[] {
-  return imageSizeOptionsByRatio[ratio]
+  // 入参来自 DB 或外部调用，不能假设一定是合法枚举；缺失时回退 1:1 的档位表，
+  // 否则 getDefaultImageSize 会抛 TypeError 并让整条会话读取链路失败。
+  return imageSizeOptionsByRatio[ratio] ?? imageSizeOptionsByRatio['1:1']
 }
 
 export function getDefaultImageSize(ratio: ImageRatio): string {
@@ -237,7 +297,7 @@ const ratioSizeMap: Record<ImageRatio, string> = {
 }
 
 export function ratioToSize(ratio: ImageRatio): string {
-  return ratioSizeMap[ratio]
+  return ratioSizeMap[ratio] ?? ratioSizeMap['1:1']
 }
 
 export function formatImageQuality(quality: ImageQuality): string {

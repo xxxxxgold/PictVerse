@@ -2931,7 +2931,8 @@ textarea {
   width: max-content;
   min-width: 100%;
   max-width: min(260px, 70vw);
-  max-height: 280px;
+  /* 分辨率档位已扩到每比例 10~11 档，380px 正好完整显示 11 行（30px + 3px gap） */
+  max-height: min(380px, 60vh);
   display: grid;
   gap: 3px;
   overflow: auto;

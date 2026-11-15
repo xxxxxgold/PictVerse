@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, statSync, unlinkSync, writeFileSyn
 import { basename, extname, join, resolve } from 'node:path'
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, normalizeCapabilityOverride } from '@shared/image-options'
+import { DEFAULT_IMAGE_OUTPUT_FORMAT, DEFAULT_MODEL, getDefaultImageSize, normalizeCapabilityOverride, normalizeImageRatio } from '@shared/image-options'
 import type {
   CapabilityOverride,
   ConversationCreateInput,
@@ -718,8 +718,8 @@ export class AppDatabase {
       title: String(row.title),
       draftPrompt: String(row.draft_prompt),
       model: String(row.model),
-      ratio: row.ratio as ImageRatio,
-      size: row.size ? String(row.size) : getDefaultImageSize(row.ratio as ImageRatio),
+      ratio: normalizeImageRatio(row.ratio),
+      size: row.size ? String(row.size) : getDefaultImageSize(normalizeImageRatio(row.ratio)),
       quality: row.quality as Conversation['quality'],
       n: Number(row.n),
       outputFormat: row.output_format ? String(row.output_format) as Conversation['outputFormat'] : DEFAULT_IMAGE_OUTPUT_FORMAT,
@@ -748,8 +748,8 @@ export class AppDatabase {
     conversationId: String(row.conversation_id),
     prompt: String(row.prompt),
     model: String(row.model),
-    ratio: row.ratio as ImageRatio,
-    size: row.size ? String(row.size) : getDefaultImageSize(row.ratio as ImageRatio),
+    ratio: normalizeImageRatio(row.ratio),
+    size: row.size ? String(row.size) : getDefaultImageSize(normalizeImageRatio(row.ratio)),
     quality: row.quality as GenerationRun['quality'],
     durationMs: row.duration_ms != null ? Number(row.duration_ms) : null,
     n: Number(row.n),
@@ -825,7 +825,7 @@ export class AppDatabase {
     runId: row.run_id ? String(row.run_id) : null,
     prompt: String(row.prompt),
     model: String(row.model),
-    ratio: row.ratio as ImageRatio,
+    ratio: normalizeImageRatio(row.ratio),
     size: row.size ? String(row.size) : null,
     quality: row.quality as ImageHistoryItem['quality'],
     requestIndex: row.request_index != null ? Number(row.request_index) : null,
