@@ -18,6 +18,7 @@ describe('generate 前置守卫', () => {
     Object.defineProperty(globalThis, 'window', {
       value: {
         setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
         pictverse: { image: { generate } }
       },
       configurable: true

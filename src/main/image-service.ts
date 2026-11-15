@@ -58,6 +58,13 @@ export class ImageService {
     const model = input.model.trim() || settings.defaultModel
     const size = input.size.trim() || getDefaultImageSize(input.ratio)
     const createdAt = new Date().toISOString()
+
+    // 空 prompt 是入参错误，不构成一次生成尝试：直接返回失败结果，
+    // 既不建 run 也不写历史，避免每次误触都在图库留下一条噪声记录。
+    if (!prompt) {
+      return this.invalidInputResult(input, model, size, 'Prompt is required.', createdAt)
+    }
+
     const referenceImages = this.getGenerationReferences(input)
     const generationMode: GenerationMode = referenceImages.length > 0 ? 'image-to-image' : 'text-to-image'
     const run = this.database.insertRun({
@@ -78,10 +85,6 @@ export class ImageService {
       createdAt
     })
     if (referenceImages.length > 0) this.database.insertRunReferences(run.id, referenceImages)
-
-    if (!prompt) {
-      return this.saveFailure(input, run, model, 'Prompt is required.', 'validation', { reason: 'Prompt is required.' }, createdAt, elapsedMs(startedAtMs))
-    }
 
     if (!apiKey) {
       return this.saveFailure(input, run, model, 'API key is not configured.', 'configuration', {
@@ -377,6 +380,39 @@ export class ImageService {
     const responseText = await response.text()
     const { payload } = this.parseResponse(responseText)
     return payload.data || []
+  }
+
+  /**
+   * 入参非法（当前只有空 prompt）的返回：不建 run、不写历史。
+   * 渲染层已有按钮禁用兜底，这里守住 IPC 入口，让 Web/脚本路径也不会污染历史。
+   */
+  private invalidInputResult(
+    input: GenerateImageInput,
+    model: string,
+    size: string,
+    errorMessage: string,
+    createdAt: string
+  ): GenerateImageResult {
+    const errorDetails = createErrorDetails({ ...input, model }, 'validation', { reason: errorMessage })
+    const run: GenerationRun = {
+      id: randomUUID(),
+      conversationId: input.conversationId,
+      prompt: input.prompt.trim(),
+      model,
+      ratio: input.ratio,
+      size,
+      quality: input.quality,
+      n: input.n,
+      status: 'failed',
+      durationMs: 0,
+      errorMessage,
+      errorDetails,
+      generationMode: 'text-to-image',
+      referenceImages: [],
+      createdAt,
+      items: []
+    }
+    return { run, items: [], errorMessage, errorDetails }
   }
 
   private saveFailure(

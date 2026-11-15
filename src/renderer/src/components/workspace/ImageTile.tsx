@@ -172,7 +172,10 @@ export function ImageTile({
           title="下载"
           onClick={(event) => {
             event.stopPropagation()
-            void window.pictverse.image.download(item.id).then((path) => path && notify('已保存图片'))
+            void window.pictverse.image
+              .download(item.id)
+              .then((path) => path && notify('已保存图片'))
+              .catch((error) => notify(error instanceof Error ? `下载失败：${error.message}` : '下载失败'))
           }}
         >
           <Download size={14} />

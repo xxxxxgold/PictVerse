@@ -211,10 +211,26 @@ export function PreviewModal({
             <button title={fullscreen ? '退出全屏' : '全屏显示'} onClick={() => void toggleFullscreen()}>
               {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
-            <button title="复制图片" onClick={() => void window.pictverse.image.copy(item.id).then(() => notify('已复制到剪贴板'))}>
+            <button
+              title="复制图片"
+              onClick={() => {
+                void window.pictverse.image
+                  .copy(item.id)
+                  .then(() => notify('已复制到剪贴板'))
+                  .catch((error) => notify(error instanceof Error ? `复制失败：${error.message}` : '复制失败'))
+              }}
+            >
               <Copy size={15} />
             </button>
-            <button title="下载图片" onClick={() => void window.pictverse.image.download(item.id).then((path) => path && notify('已保存图片'))}>
+            <button
+              title="下载图片"
+              onClick={() => {
+                void window.pictverse.image
+                  .download(item.id)
+                  .then((path) => path && notify('已保存图片'))
+                  .catch((error) => notify(error instanceof Error ? `下载失败：${error.message}` : '下载失败'))
+              }}
+            >
               <Download size={15} />
             </button>
             <button title={favorite ? '取消收藏' : '收藏'} onClick={() => void handleToggleFavorite()}>

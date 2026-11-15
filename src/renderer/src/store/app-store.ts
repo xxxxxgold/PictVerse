@@ -24,6 +24,7 @@ import {
   markGenerationRequestRemoved,
   pruneRemovedGenerationIndexesByRunId
 } from './generation-state'
+import { describeGenerateError } from './generate-error'
 import type { PromptTemplate } from '../prompt-library'
 
 type View = 'workspace' | 'gallery' | 'prompts'
@@ -151,7 +152,7 @@ type AppState = {
   setFavoriteForHistoryItems: (items: ImageHistoryItem[], favorite: boolean) => Promise<void>
   retryHistory: (item: ImageHistoryItem) => Promise<void>
   reuseHistory: (item: ImageHistoryItem) => Promise<void>
-  notify: (message: string | null) => void
+  notify: (message: string | null, durationMs?: number) => void
   loadProviders: () => Promise<void>
   saveProvider: (input: ProviderInput, id?: string) => Promise<void>
   deleteProvider: (id: string) => Promise<void>
@@ -161,6 +162,8 @@ type AppState = {
 }
 
 let generationClockTimer: number | null = null
+/** toast 自动消失的定时器；新的 notify 必须清掉它，避免长提示被前一个短提示截断 */
+let toastTimer: number | null = null
 
 function startGenerationClock(): void {
   if (generationClockTimer != null || typeof window === 'undefined') return
@@ -560,11 +563,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   generate: async () => {
     const state = get()
     const conversation = state.conversations.find((item) => item.id === state.activeConversationId)
-    if (!conversation) return
+    if (!conversation) {
+      // 曾经静默 return：按钮可点、界面毫无反应，用户只会以为按钮坏了
+      get().notify('请先选择或新建一个会话')
+      return
+    }
+    const prompt = conversation.draftPrompt.trim()
+    // 空 prompt 是入参错误：不启动计时、不建 run，直接提示。
+    // UI 靠按钮 disabled 挡，但 generate 是公开 action，程序化入口也会走到这里。
+    if (!prompt) {
+      get().notify('请先输入提示词')
+      return
+    }
     const generationStartedAt = Date.now()
     set({ generationClockMs: generationStartedAt })
     startGenerationClock()
-    const prompt = conversation.draftPrompt.trim()
     // 与下方 input.model 的取值口径保持一致，避免空模型时两处判定不同
     const effectiveModel = conversation.model || state.settings?.defaultModel || DEFAULT_MODEL
     const maskSupported = resolveModelCapabilities(
@@ -627,12 +640,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     })
     const titlePatch = conversation.title === '新会话' && prompt ? { title: prompt.length > 18 ? `${prompt.slice(0, 18)}...` : prompt } : null
     try {
-      if (titlePatch) await get().updateActiveConversation(titlePatch)
+      // 改标题只是可选副作用：DB 写入失败不能拦住真正要发的生成请求
+      if (titlePatch) {
+        await get().updateActiveConversation(titlePatch).catch(() => {
+          // 忽略：标题仍是「新会话」，不影响生成
+        })
+      }
       const resultPromise = window.pictverse.image.generate(input)
       void get().refreshConversationResults(conversation.id)
       const result = await resultPromise
       const runs = await window.pictverse.conversation.runs(conversation.id)
-      const history = await window.pictverse.history.list({ query: state.query, sort: state.sort, favoritesOnly: state.favoritesOnly })
+      // 用最新筛选条件而不是启动时的快照：生成耗时数十秒，期间用户可能改过排序/筛选
+      const latestFilters = get()
+      const history = await window.pictverse.history.list({
+        query: latestFilters.query,
+        sort: latestFilters.sort,
+        favoritesOnly: latestFilters.favoritesOnly
+      })
       const runsByConversation = { ...get().runsByConversation, [conversation.id]: runs }
       const runningRunIds = collectRunningRunIds(runsByConversation)
       const prunedGenerationState = pruneRemovedGenerationIndexesByRunId(runningRunIds, {
@@ -646,9 +670,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         removedGenerationIndexesByRunId: prunedGenerationState.removedIndexesByRunId
       })
       const durationText = result.run.durationMs != null ? `，用时 ${formatDuration(result.run.durationMs)}` : ''
-      get().notify(result.canceled ? `已取消${durationText}` : result.errorMessage ? `生成失败：${result.errorMessage}${durationText}` : `生成完成${durationText}`)
+      if (result.canceled) {
+        get().notify(`已取消${durationText}`)
+      } else if (result.errorMessage) {
+        // 失败信息需要读完才知道怎么办，停留时间比普通提示长，避免一闪而过
+        get().notify(`生成失败：${describeGenerateError(result.errorMessage)}${durationText}`, 6000)
+      } else {
+        get().notify(`生成完成${durationText}`)
+      }
     } catch (error) {
-      get().notify(error instanceof Error ? `生成失败：${error.message}` : '生成失败')
+      get().notify(`生成失败：${describeGenerateError(error)}`, 6000)
     } finally {
       const nextGenerationState = endConversationGeneration(conversation.id, {
         generatingByConversation: get().generatingByConversation,
@@ -977,8 +1008,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().notify(error instanceof Error ? `保存模型失败：${error.message}` : '保存模型失败')
     }
   },
-  notify: (message) => {
+  notify: (message, durationMs = 1800) => {
+    // 上一个 toast 的定时器必须清掉：否则短提示的定时器会提前清掉后到的长提示。
+    if (toastTimer != null) {
+      window.clearTimeout(toastTimer)
+      toastTimer = null
+    }
     set({ toast: message })
-    if (message) window.setTimeout(() => set({ toast: null }), 1800)
+    if (!message) return
+    toastTimer = window.setTimeout(() => {
+      toastTimer = null
+      set({ toast: null })
+    }, durationMs)
   }
 }))

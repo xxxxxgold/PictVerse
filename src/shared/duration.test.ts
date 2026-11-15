@@ -16,4 +16,11 @@ describe('duration helpers', () => {
   it('computes elapsed milliseconds from timestamps', () => {
     expect(elapsedMs(1_000, 4_250)).toBe(3_250)
   })
+
+  it('treats non-finite input as zero instead of printing NaN', () => {
+    // 回归：脏 duration_ms 曾经渲染成 "NaNm NaNs"
+    expect(formatDuration(NaN)).toBe('0s')
+    expect(formatDuration(Infinity)).toBe('0s')
+    expect(formatDuration(-Infinity)).toBe('0s')
+  })
 })

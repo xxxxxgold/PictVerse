@@ -3,7 +3,8 @@ export function elapsedMs(startedAtMs: number, nowMs: number = Date.now()): numb
 }
 
 export function formatDuration(ms: number): string {
-  const safe = Math.max(0, ms)
+  // 脏数据（NaN/Infinity）不应显示成 "NaNm NaNs"：按 0 处理
+  const safe = Number.isFinite(ms) ? Math.max(0, ms) : 0
   const totalSeconds = Math.floor(safe / 1000)
 
   if (totalSeconds < 60) {

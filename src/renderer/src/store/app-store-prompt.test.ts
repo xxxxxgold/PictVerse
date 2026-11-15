@@ -74,6 +74,7 @@ function installPictVerseMock(mock: {
   Object.defineProperty(globalThis, 'window', {
     value: {
       setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
       clearInterval: globalThis.clearInterval,
       pictverse: {
         prompt: mock.prompt,
