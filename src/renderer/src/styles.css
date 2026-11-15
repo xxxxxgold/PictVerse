@@ -745,8 +745,11 @@ html.dark .grain {
 }
 /* ===== 蒙版编辑器 ===== */
 .mask-panel {
-  width: min(860px, 92vw);
-  max-height: 90vh;
+  /* 满屏会压迫，也挡住上下文；按视口比例收一点，大屏再封顶 */
+  width: min(1240px, 88vw);
+  height: min(860px, 84vh);
+  max-width: none;
+  max-height: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -766,22 +769,40 @@ html.dark .grain {
 .mask-head > span:first-child { font-size: 14px; font-weight: 650; }
 .mask-stage {
   position: relative;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  min-height: 320px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
   background: repeating-conic-gradient(var(--surface-2) 0% 25%, var(--surface-1) 0% 50%) 50% / 20px 20px;
+  cursor: default;
 }
-.mask-stage img,
-.mask-stage canvas {
-  grid-area: 1 / 1;
-  max-width: 100%;
-  max-height: 56vh;
+/* 画布容器：绝对居中，由 transform 承载缩放与平移，涂抹落点仍按 rect 换算 */
+.mask-viewport {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  will-change: transform;
+}
+.mask-viewport img,
+.mask-viewport canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border-radius: var(--r-md);
   touch-action: none;
 }
-.mask-stage canvas { cursor: crosshair; }
-.mask-stage canvas.pending { opacity: 0; }
+.mask-viewport canvas { cursor: crosshair; }
+.mask-viewport canvas.pending { opacity: 0; }
+/* 手形工具：整块编辑区可拖，按住时显示抓取光标 */
+.mask-stage.tool-hand,
+.mask-stage.tool-hand canvas,
+.mask-stage.tool-hand .mask-viewport img { cursor: grab; }
+.mask-stage.tool-hand.panning,
+.mask-stage.tool-hand.panning canvas { cursor: grabbing; }
+/* 画笔/橡皮下也能用中键或 Alt+左键临时拖，按住时给同样的抓取反馈 */
+.mask-stage.panning { cursor: grabbing; }
+.mask-size.muted { opacity: 0.45; }
 .mask-tools {
   display: flex;
   align-items: center;
@@ -795,8 +816,65 @@ html.dark .grain {
 .mask-size { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
 .mask-size input { width: 110px; accent-color: var(--mint-dark); }
 .mask-tools .ghost { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border-radius: var(--r-sm); font-size: 12px; color: var(--muted); }
-.mask-tools .ghost:hover { color: var(--ink); background: var(--surface-2); }
+.mask-tools .ghost:hover:not(:disabled) { color: var(--ink); background: var(--surface-2); }
+.mask-tools .ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.mask-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+}
+.mask-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--muted);
+}
+.mask-zoom-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.mask-zoom-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.mask-zoom-value {
+  min-width: 46px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.mask-zoom-value:hover { color: var(--mint-dark); }
 .mask-tools .btn-primary { margin-left: auto; }
+/* 空态与加载失败提示：没有参考图或图片加载失败时，画布区给明确说明 */
+.mask-stage-empty {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.mask-load-error {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-solid);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-size: 12px;
+  box-shadow: var(--shadow-rest);
+  pointer-events: none;
+}
 /* ===== 设置弹窗 ===== */
 .settings-modal {
   width: min(1080px, 92vw);
