@@ -17,6 +17,7 @@ export function Composer({ conversation, generating }: { conversation: Conversat
     reorderReferenceImages,
     inspirePrompt,
     enrichPrompt,
+    focusParam,
     promptAssistantRunning
   } = useAppStore()
   const promptRef = useRef<HTMLTextAreaElement>(null)
@@ -107,10 +108,11 @@ export function Composer({ conversation, generating }: { conversation: Conversat
             <Sparkles size={13} />
             {referenceCount > 0 ? `图生图 · ${referenceCount} 张参考图` : '文生图'}
           </span>
-          <span className="pill" title="输出尺寸">{formatImageSize(conversation.size)}</span>
-          <span className="pill" title="质量">{conversation.quality || 'auto'}</span>
-          <span className="pill" title="张数">×{conversation.n ?? 1}</span>
-          <span className="pill" title="输出格式">{(conversation.outputFormat || 'png').toUpperCase()}</span>
+          <ParamPill name="图片比例" value={conversation.ratio} onClick={() => focusParam('ratio')} />
+          <ParamPill name="分辨率" value={formatImageSize(conversation.size)} onClick={() => focusParam('size')} />
+          <ParamPill name="质量" value={conversation.quality || 'auto'} onClick={() => focusParam('quality')} />
+          <ParamPill name="生成数量" value={`×${conversation.n ?? 1}`} onClick={() => focusParam('count')} />
+          <ParamPill name="输出格式" value={(conversation.outputFormat || 'png').toUpperCase()} onClick={() => focusParam('format')} />
 
           {pendingMask ? (
             <button
@@ -294,5 +296,19 @@ export function Composer({ conversation, generating }: { conversation: Conversat
         />
       ) : null}
     </form>
+  )
+}
+
+/** 参数条快捷入口：点击后由参数面板定位到对应设置项 */
+function ParamPill({ name, value, onClick }: { name: string; value: string; onClick: () => void }): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="pill pill-link"
+      title={`${name}：点击跳转到右侧参数面板`}
+      onClick={onClick}
+    >
+      {value}
+    </button>
   )
 }

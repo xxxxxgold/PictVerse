@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { CircleHelp, Dices, Lock } from 'lucide-react'
 import {
   DEFAULT_IMAGE_OUTPUT_FORMAT,
@@ -33,8 +33,32 @@ export function SettingsPanel(): JSX.Element {
   const conversation = conversations.find((item) => item.id === activeConversationId) || null
   const isImageToImage = (conversation?.referenceImages.length || 0) > 0
   const [providerModels, setProviderModels] = useState<string[]>([])
+  const paramsFocus = useAppStore((state) => state.paramsFocus)
+  const inspectorRef = useRef<HTMLElement>(null)
 
   const activeProviderId = resolveActiveProvider(conversation?.providerId, providers)?.id ?? null
+
+  // 参数条快捷入口：定位到目标字段，必要时展开折叠分组并短暂高亮
+  useEffect(() => {
+    if (!paramsFocus) return
+    const root = inspectorRef.current
+    if (!root) return
+    const target = root.querySelector<HTMLElement>(`[data-param-field="${paramsFocus.key}"]`)
+    if (!target) return
+    const group = target.closest('details')
+    if (group && !group.open) group.open = true
+    // 等抽屉与折叠区完成布局后再滚动，避免按展开前的位置定位
+    const scrollTimer = window.setTimeout(() => {
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      target.classList.add('param-flash')
+    }, 90)
+    const flashTimer = window.setTimeout(() => target.classList.remove('param-flash'), 1600)
+    return () => {
+      window.clearTimeout(scrollTimer)
+      window.clearTimeout(flashTimer)
+      target.classList.remove('param-flash')
+    }
+  }, [paramsFocus])
 
   useEffect(() => {
     if (!activeProviderId) {
@@ -55,7 +79,7 @@ export function SettingsPanel(): JSX.Element {
     return list.filter(Boolean).map((model) => ({ value: model, label: model }))
   }, [conversation?.model, providerModels])
 
-  if (!conversation) return <aside className="inspector" />
+  if (!conversation) return <aside className="inspector" ref={inspectorRef} />
 
   const activeProvider = resolveActiveProvider(conversation.providerId, providers)
   const capabilities = resolveModelCapabilities(conversation.model, activeProvider)
@@ -72,7 +96,7 @@ export function SettingsPanel(): JSX.Element {
     : getDefaultImageSize(conversation.ratio)
 
   return (
-    <aside className="inspector">
+    <aside className="inspector" ref={inspectorRef}>
       <div className="config-stack">
         <section className="panel">
           <h3>当前会话参数</h3>
@@ -86,7 +110,7 @@ export function SettingsPanel(): JSX.Element {
               onChange={(model) => void updateActiveConversation({ model })}
             />
           </label>
-          <div className="field">
+          <div className="field" data-param-field="ratio">
             <span>图片比例</span>
             <div className="segmented">
               {ratios.map((ratio) => (
@@ -100,7 +124,7 @@ export function SettingsPanel(): JSX.Element {
               ))}
             </div>
           </div>
-          <div className="field">
+          <div className="field" data-param-field="size">
             <span>分辨率</span>
             <GallerySelect
               value={selectedSize}
@@ -110,7 +134,7 @@ export function SettingsPanel(): JSX.Element {
               onChange={(size) => void updateActiveConversation({ size })}
             />
           </div>
-          <div className="field">
+          <div className="field" data-param-field="quality">
             <span className="field-label-with-help">
               <span>质量</span>
               <button
@@ -134,7 +158,7 @@ export function SettingsPanel(): JSX.Element {
               ))}
             </div>
           </div>
-          <label className="field">
+          <label className="field" data-param-field="count">
             <span>生成数量</span>
             <input
               className="input-control"
@@ -157,7 +181,7 @@ export function SettingsPanel(): JSX.Element {
                 checked={conversation.stream}
                 onChange={() => void updateActiveConversation({ stream: !conversation.stream })}
               />
-              <label className="field">
+              <label className="field" data-param-field="format">
                 <span className="field-label-with-help">
                   <span>输出格式</span>
                   <button

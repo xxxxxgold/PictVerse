@@ -81,10 +81,20 @@ export type PendingMask = {
   referenceId: string
 }
 
+/** 参数条快捷入口指向的参数面板字段 */
+export type ParamFocusKey = 'ratio' | 'size' | 'quality' | 'count' | 'format'
+
+export type ParamFocus = {
+  key: ParamFocusKey
+  /** 每次点击递增，保证重复点击同一字段也能重新定位并高亮 */
+  nonce: number
+}
+
 type AppState = {
   view: View
   settingsVisible: boolean
   drawer: 'none' | 'sessions' | 'params'
+  paramsFocus: ParamFocus | null
   settingsModalOpen: boolean
   pendingMask: PendingMask | null
   darkMode: boolean
@@ -111,6 +121,7 @@ type AppState = {
   toggleSettings: () => void
   toggleTheme: () => void
   setDrawer: (drawer: 'none' | 'sessions' | 'params') => void
+  focusParam: (key: ParamFocusKey) => void
   setSettingsModalOpen: (open: boolean) => void
   setPendingMask: (mask: PendingMask | null) => void
   toggleSessionsDrawer: () => void
@@ -173,6 +184,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   view: 'workspace',
   settingsVisible: true,
   drawer: 'none',
+  paramsFocus: null,
   settingsModalOpen: false,
   pendingMask: null,
   darkMode: false,
@@ -235,6 +247,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleSettings: () => set((state) => ({ settingsVisible: !state.settingsVisible, view: 'workspace' })),
   toggleTheme: () => set((state) => ({ darkMode: !state.darkMode })),
   setDrawer: (drawer) => set({ drawer }),
+  focusParam: (key) =>
+    set((state) => ({
+      drawer: 'params',
+      paramsFocus: { key, nonce: (state.paramsFocus?.nonce ?? 0) + 1 }
+    })),
   setSettingsModalOpen: (open) => set({ settingsModalOpen: open }),
   setPendingMask: (mask) => set({ pendingMask: mask }),
   toggleSessionsDrawer: () => set((state) => ({ drawer: state.drawer === 'sessions' ? 'none' : 'sessions' })),

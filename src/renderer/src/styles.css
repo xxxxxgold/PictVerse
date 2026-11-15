@@ -1698,6 +1698,38 @@ html.dark .grain {
   height: 14px;
 }
 
+/* 参数条参数标签是快捷入口：按钮形态仍按 pill 渲染，不继承顶部工具按钮的尺寸 */
+.composer-head button.pill {
+  height: auto;
+  min-height: 22px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.composer-head button.pill-link {
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.composer-head button.pill-link:hover {
+  border-color: rgba(30, 159, 120, 0.5);
+  background: var(--mint-soft);
+  color: var(--mint-dark);
+}
+
+.composer-head button.pill-link:active {
+  transform: translateY(1px);
+}
+
+.dark .composer-head button.pill-link:hover {
+  border-color: rgba(96, 199, 161, 0.5);
+  background: rgba(96, 199, 161, 0.14);
+  color: #8ce0bd;
+}
+
 .reference-strip {
   display: flex;
   align-items: center;
@@ -2409,6 +2441,49 @@ textarea {
   font-size: 11px;
   font-weight: 500;
   line-height: 1.35;
+}
+
+/* 从参数条跳转时，短暂标出参数面板里的目标字段 */
+.param-flash {
+  animation: param-flash 1.6s var(--ease) forwards;
+}
+
+@keyframes param-flash {
+  0%,
+  35% {
+    outline: 2px solid rgba(47, 189, 144, 0.7);
+    outline-offset: 3px;
+    border-radius: 10px;
+    background: rgba(47, 189, 144, 0.1);
+  }
+
+  100% {
+    outline: 2px solid rgba(47, 189, 144, 0);
+    outline-offset: 3px;
+    border-radius: 10px;
+    background: transparent;
+  }
+}
+
+.dark .param-flash {
+  animation-name: param-flash-dark;
+}
+
+@keyframes param-flash-dark {
+  0%,
+  35% {
+    outline: 2px solid rgba(79, 214, 168, 0.72);
+    outline-offset: 3px;
+    border-radius: 10px;
+    background: rgba(79, 214, 168, 0.12);
+  }
+
+  100% {
+    outline: 2px solid rgba(79, 214, 168, 0);
+    outline-offset: 3px;
+    border-radius: 10px;
+    background: transparent;
+  }
 }
 
 .dark .field-error {
