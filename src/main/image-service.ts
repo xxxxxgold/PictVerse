@@ -24,6 +24,7 @@ import type { AppDatabase } from './database'
 import { createErrorDetails } from './error-details'
 import type { ImageResponseData } from './image-response'
 import type { SettingsStore } from './settings'
+import { ensureThumbnail } from './thumbnail-native'
 
 type ImageApiResponse = {
   data?: ImageResponseData[]
@@ -219,6 +220,18 @@ export class ImageService {
     }
   }
 
+  /**
+   * 缩略图是纯优化产物：生成失败绝不能让已经落盘的原图被记为失败。
+   * ensureThumbnail 内部已 try/catch，这里再兜一层，防止 future 改动引入抛错路径。
+   */
+  private static tryCreateThumbnail(filePath: string): void {
+    try {
+      ensureThumbnail(filePath)
+    } catch {
+      // 忽略：缺缩略图时协议层会回退原图
+    }
+  }
+
   private async saveImage(
     id: string,
     image: ImageResponseData,
@@ -230,6 +243,7 @@ export class ImageService {
       const filePath = join(targetDir, `${id}${extensionFromOutputFormat(outputFormat)}`)
       const fileBuffer = Buffer.from(image.b64_json, 'base64')
       writeFileSync(filePath, fileBuffer)
+      ImageService.tryCreateThumbnail(filePath)
       return { filePath, fileSizeBytes: fileBuffer.length }
     }
 
@@ -242,6 +256,7 @@ export class ImageService {
       const filePath = join(targetDir, `${id}${extension}`)
       const fileBuffer = Buffer.from(await response.arrayBuffer())
       writeFileSync(filePath, fileBuffer)
+      ImageService.tryCreateThumbnail(filePath)
       return { filePath, fileSizeBytes: fileBuffer.length }
     }
 

@@ -229,7 +229,8 @@ export function createWebPictVerseAPI(): PictVerseAPI {
     image: {
       generate: generateImage,
       cancel: async () => undefined,
-      url: (id: string) => 图片地址缓存.get(id) || '',
+      // Web 版图片是服务端直出的 URL，没有缩略图服务，width 参数被忽略
+      url: (id: string, _width?: number) => 图片地址缓存.get(id) || '',
       copy: copyImage,
       download: downloadImage,
       downloadMany: downloadManyImages

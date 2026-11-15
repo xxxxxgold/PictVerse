@@ -37,7 +37,10 @@ const api: PictVerseAPI = {
   image: {
     generate: (input: GenerateImageInput) => ipcRenderer.invoke('image:generate', input),
     cancel: (runId: string, requestIndex?: number) => ipcRenderer.invoke('image:cancel', runId, requestIndex),
-    url: (id: string) => `pictverse-image://image/${encodeURIComponent(id)}`,
+    url: (id: string, width?: number) =>
+      width && width > 0
+        ? `pictverse-image://image/${encodeURIComponent(id)}?w=${Math.round(width)}`
+        : `pictverse-image://image/${encodeURIComponent(id)}`,
     copy: (id: string) => ipcRenderer.invoke('image:copy', id),
     download: (id: string) => ipcRenderer.invoke('image:download', id),
     downloadMany: (ids: string[]) => ipcRenderer.invoke('image:download-many', ids)

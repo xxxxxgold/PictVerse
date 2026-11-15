@@ -310,7 +310,8 @@ export type PictVerseAPI = {
   image: {
     generate: (input: GenerateImageInput) => Promise<GenerateImageResult>
     cancel: (runId: string, requestIndex?: number) => Promise<void>
-    url: (id: string) => string
+    /** width > 0 时请求缩略图（最长边按 width 等比缩放）；不传或 <= 0 返回原图 */
+    url: (id: string, width?: number) => string
     copy: (id: string) => Promise<void>
     download: (id: string) => Promise<string | null>
     downloadMany: (ids: string[]) => Promise<BatchDownloadResult | null>

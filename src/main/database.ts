@@ -21,6 +21,7 @@ import type {
 } from '@shared/types'
 import { createInterruptedRunRecoveryPlan } from './interrupted-run-recovery'
 import { isPathInside } from './path-guard'
+import { derivedImagePaths } from './thumbnail'
 
 type Row = Record<string, unknown>
 
@@ -802,12 +803,15 @@ export class AppDatabase {
   }
 
   private deleteImageFile(filePath: string): void {
-    const resolved = resolve(filePath)
     const imagesRoot = resolve(this.imagesDir)
     const roots = [imagesRoot]
     if (this.extraImageRoot) roots.push(this.extraImageRoot)
-    if (roots.some((root) => isPathInside(root, resolved)) && existsSync(resolved)) {
-      unlinkSync(resolved)
+    // 缩略图是原图的派生产物，必须随原图一起清理，否则每删一张图都会留下孤儿文件。
+    for (const candidate of derivedImagePaths(filePath)) {
+      const resolved = resolve(candidate)
+      if (roots.some((root) => isPathInside(root, resolved)) && existsSync(resolved)) {
+        unlinkSync(resolved)
+      }
     }
   }
 

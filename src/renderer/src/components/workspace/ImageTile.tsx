@@ -5,6 +5,9 @@ import { useAppStore } from '@renderer/store/app-store'
 import { PreviewModal } from '@renderer/components/preview/PreviewModal'
 import { ErrorDetailsModal } from './ErrorDetailsModal'
 
+/** tile 缩略图请求的最长边。卡片宽 168–250px，取 2x DPR 上限 512。 */
+const THUMBNAIL_REQUEST_WIDTH = 512
+
 export function ImageTile({
   item,
   previewItems,
@@ -27,7 +30,11 @@ export function ImageTile({
   const [errorDetailsOpen, setErrorDetailsOpen] = useState(false)
   const tileRef = useRef<HTMLElement | null>(null)
   const [lockedHeight, setLockedHeight] = useState<number | null>(null)
-  const src = useMemo(() => (item.status === 'succeeded' ? window.pictverse.image.url(item.id) : ''), [item.id, item.status])
+  // 卡片实际显示宽度 168–250px，按 2x DPR 取 512 足够清晰，避免解码 1024²/4K 原图。
+  const src = useMemo(
+    () => (item.status === 'succeeded' ? window.pictverse.image.url(item.id, THUMBNAIL_REQUEST_WIDTH) : ''),
+    [item.id, item.status]
+  )
   const openPreview = () => {
     if (item.status === 'succeeded') setPreviewOpen(true)
   }
@@ -133,19 +140,30 @@ export function ImageTile({
       {selectionControl}
       {item.filePath && /\.gif$/i.test(item.filePath) ? (
         <>
-          <img className="gif-still" src={src} alt={item.prompt} />
-          <video className="gif-live" src={src} muted loop playsInline />
+          {/* GIF 的悬停播放走 video，必须用原图（缩略图只有首帧静态 JPEG） */}
+          <img className="gif-still" src={src} alt={item.prompt} loading="lazy" decoding="async" />
+          <video
+            className="gif-live"
+            src={window.pictverse.image.url(item.id)}
+            muted
+            loop
+            playsInline
+            preload="none"
+          />
           <span className="gif-badge">GIF</span>
         </>
       ) : (
-        <img src={src} alt={item.prompt} />
+        <img src={src} alt={item.prompt} loading="lazy" decoding="async" />
       )}
       <div className="art-tools">
         <button
           title="复制"
           onClick={(event) => {
             event.stopPropagation()
-            void window.pictverse.image.copy(item.id).then(() => notify('已复制到剪贴板'))
+            void window.pictverse.image
+              .copy(item.id)
+              .then(() => notify('已复制到剪贴板'))
+              .catch((error) => notify(error instanceof Error ? `复制失败：${error.message}` : '复制失败'))
           }}
         >
           <Copy size={14} />
