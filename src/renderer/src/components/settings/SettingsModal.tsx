@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Info,
   Keyboard,
+  Plug,
   Plus,
   RotateCcw,
   Sparkles,
@@ -16,6 +17,7 @@ import {
 import { useAppStore } from '@renderer/store/app-store'
 import { GallerySelect } from '@renderer/components/gallery/GallerySelect'
 import { EditableSelect } from '@renderer/components/common/EditableSelect'
+import { McpSettings } from './McpSettings'
 import { appVersion, repositoryUrl } from '@shared/app-version'
 import type { CapabilityOverride, PricingMode, Provider, PromptAssistantProtocol } from '@shared/types'
 import {
@@ -28,7 +30,7 @@ import {
 } from '@shared/prompt-assistant'
 import { resolveModelCapabilities } from '@shared/image-options'
 
-type TabKey = 'providers' | 'storage' | 'assistant' | 'keys' | 'about'
+type TabKey = 'providers' | 'storage' | 'mcp' | 'assistant' | 'keys' | 'about'
 
 type AssistantConfig = PromptAssistConfig
 
@@ -71,6 +73,7 @@ function readAssistantConfig(): AssistantConfig {
 const tabs: Array<{ key: TabKey; label: string; icon: JSX.Element }> = [
   { key: 'providers', label: '供应商', icon: <Boxes size={15} /> },
   { key: 'storage', label: '存储', icon: <FolderOpen size={15} /> },
+  { key: 'mcp', label: 'MCP 服务', icon: <Plug size={15} /> },
   { key: 'assistant', label: '提示词助手', icon: <Sparkles size={15} /> },
   { key: 'keys', label: '快捷键', icon: <Keyboard size={15} /> },
   { key: 'about', label: '关于', icon: <Info size={15} /> }
@@ -633,6 +636,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }): JSX.Element
               </div>
             </div>
           ) : null}
+
+          {tab === 'mcp' ? <McpSettings /> : null}
 
           {tab === 'assistant' ? (
             <div className="sbody on">

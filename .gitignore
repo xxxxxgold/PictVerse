@@ -12,3 +12,4 @@ dist-server/
 
 tmp/
 .trellis/
+dist-mcp/

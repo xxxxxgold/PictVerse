@@ -20,6 +20,10 @@ import { SettingsStore } from './settings'
 import { createMainWindowOptions } from './window-options'
 import { fetchProviderModels } from './provider-models'
 import { enqueueThumbnail } from './thumbnail-native'
+import { McpLogStore } from './mcp/log-store'
+import { McpHttpServer } from './mcp/server'
+import { buildMcpSnippets } from './mcp/config-snippets'
+import { resolveBridgeLaunch } from './mcp/bridge-paths'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -37,6 +41,8 @@ let database: AppDatabase
 let settings: SettingsStore
 let imageService: ImageService
 let promptService: PromptService
+let mcpServer: McpHttpServer | null = null
+let mcpLogStore: McpLogStore | null = null
 
 function getDataDir(): string {
   return prepareDataDir({
@@ -272,6 +278,99 @@ function registerIpc(): void {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return
     void shell.openExternal(parsed.toString())
   })
+
+  registerMcpIpc()
+}
+
+/** MCP 服务的 IPC：状态、开关、端口、token、日志、配置片段 */
+function registerMcpIpc(): void {
+  ipcMain.handle('mcp:status', () => requireMcpServer().status())
+
+  ipcMain.handle('mcp:set-enabled', async (_event, enabled: boolean) => {
+    const server = requireMcpServer()
+    settings.updateMcpSettings({ enabled: enabled === true })
+    if (enabled === true) {
+      await startMcpServerQuietly()
+    } else {
+      await server.stop()
+    }
+    return server.status()
+  })
+
+  ipcMain.handle('mcp:set-port', async (_event, port: number) => {
+    const server = requireMcpServer()
+    const previous = settings.getMcpSettings().port
+    const wasRunning = server.running
+    if (wasRunning) await server.stop()
+    try {
+      settings.updateMcpSettings({ port })
+    } catch (error) {
+      // 端口非法：把服务恢复到改动前，错误照常抛给渲染层
+      if (wasRunning) await startMcpServerQuietly()
+      throw error
+    }
+    if (wasRunning) {
+      try {
+        await server.start()
+      } catch {
+        // 新端口起不来：回滚到旧端口并恢复监听，避免「改个端口把服务弄没了」
+        settings.updateMcpSettings({ port: previous })
+        await startMcpServerQuietly()
+      }
+    }
+    return server.status()
+  })
+
+  ipcMain.handle('mcp:reveal-token', () => settings.getMcpSettings().token)
+
+  ipcMain.handle('mcp:rotate-token', async () => {
+    const server = requireMcpServer()
+    const { token } = settings.rotateMcpToken()
+    // 旧 token 立即失效：已建立的会话也要清掉，否则它们仍然连着
+    if (server.running) await server.restart()
+    return { status: server.status(), token }
+  })
+
+  ipcMain.handle('mcp:logs', (_event, options?: { page?: number; pageSize?: number; onlyErrors?: boolean }) =>
+    requireMcpLogStore().listPage(options || {}))
+
+  ipcMain.handle('mcp:clear-logs', () => {
+    requireMcpLogStore().clear()
+  })
+
+  ipcMain.handle('mcp:snippets', () => {
+    const settingsValue = settings.getMcpSettings()
+    return buildMcpSnippets({
+      port: settingsValue.port,
+      token: settingsValue.token,
+      // 路径跟着当前安装/运行位置走，移动软件后重新复制即可
+      stdio: resolveBridgeLaunch({
+        isPackaged: app.isPackaged,
+        execPath: process.execPath,
+        appPath: app.getAppPath(),
+        resourcesPath: process.resourcesPath
+      })
+    })
+  })
+}
+
+function requireMcpServer(): McpHttpServer {
+  if (!mcpServer) throw new Error('MCP 服务尚未初始化。')
+  return mcpServer
+}
+
+function requireMcpLogStore(): McpLogStore {
+  if (!mcpLogStore) throw new Error('MCP 日志尚未初始化。')
+  return mcpLogStore
+}
+
+/** 启动失败不让调用方崩：错误已经记在 status().lastError 里 */
+async function startMcpServerQuietly(): Promise<void> {
+  try {
+    await requireMcpServer().start()
+  } catch {
+    // 详情见 status().lastError
+  }
 }
 
 app.whenReady().then(() => {
@@ -285,10 +384,30 @@ app.whenReady().then(() => {
   database.setExtraImageRoot(settings.getPublicSettings().imagesRoot || null)
   imageService = new ImageService(database, settings)
   promptService = new PromptService(settings)
+  mcpLogStore = new McpLogStore(join(dataDir, 'mcp.ndjson'))
+  mcpServer = new McpHttpServer({
+    database,
+    imageService,
+    promptService,
+    settings,
+    logStore: mcpLogStore,
+    logEvent: (entry) => mcpLogStore?.append({
+      tool: entry.tool,
+      ok: entry.ok,
+      durationMs: entry.durationMs,
+      clientName: entry.clientName,
+      summary: entry.summary,
+      error: entry.error
+    }),
+    onImageDeleted: (id) => invalidateImagePathCache(id)
+  })
   registerImageProtocol()
   registerIpc()
   registerWindowControls()
   createWindow()
+
+  // 按上次保存的开关恢复监听；失败只写进状态，不打断启动
+  if (settings.getMcpSettings().enabled) void startMcpServerQuietly()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -299,6 +418,18 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
-  database?.close()
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting) return
+  // 先停服务再关库：否则在途请求会撞上已关闭的 SQLite 连接
+  event.preventDefault()
+  quitting = true
+  void (async () => {
+    try {
+      await mcpServer?.stop()
+    } finally {
+      database?.close()
+      app.quit()
+    }
+  })()
 })

@@ -249,6 +249,63 @@ export type HistoryListOptions = {
   favoritesOnly?: boolean
 }
 
+/** MCP 服务的持久化配置（存 settings.json 的 mcp 段） */
+export type McpSettings = {
+  enabled: boolean
+  port: number
+  token: string
+}
+
+/** MCP 服务的运行时状态，供设置页展示 */
+export type McpStatus = {
+  enabled: boolean
+  running: boolean
+  host: string
+  port: number
+  /** 完整端点，如 http://127.0.0.1:47610/mcp */
+  endpoint: string
+  startedAt: string | null
+  sessionCount: number
+  toolCount: number
+  callCount: number
+  errorCount: number
+  /** 启动失败原因（人话，不含堆栈）；正常时为 null */
+  lastError: string | null
+}
+
+/** 一次 MCP 调用的审计记录 */
+export type McpLogEntry = {
+  id: string
+  /** ISO 时间 */
+  at: string
+  /** 工具名，或 initialize / tools/list 等协议动作 */
+  tool: string
+  ok: boolean
+  durationMs: number
+  clientName: string | null
+  /** 入参摘要，≤160 字符 */
+  summary: string
+  error: string | null
+}
+
+/** 可一键复制的客户端配置片段 */
+export type McpConfigSnippet = {
+  id: 'codex' | 'claude' | 'generic' | 'codex-stdio' | 'claude-stdio'
+  label: string
+  hint: string
+  language: string
+  content: string
+}
+
+/** 日志分页结果：设置页一次只取一页，避免把 500 条全塞进渲染层 */
+export type McpLogPage = {
+  items: McpLogEntry[]
+  total: number
+  page: number
+  pageSize: number
+  pageCount: number
+}
+
 export type PricingMode = 'unified' | 'tiered' | 'token'
 
 /**
@@ -346,6 +403,18 @@ export type PictVerseAPI = {
   shell: {
     openPath: (filePath: string) => Promise<string>
     openExternal: (url: string) => Promise<void>
+  }
+  /** 桌面版可用：内置 MCP 服务；Web 版未实现 */
+  mcp?: {
+    status: () => Promise<McpStatus>
+    setEnabled: (enabled: boolean) => Promise<McpStatus>
+    setPort: (port: number) => Promise<McpStatus>
+    /** 读取明文 token 用于展示与复制；仅在本地渲染层可见 */
+    revealToken: () => Promise<string>
+    rotateToken: () => Promise<{ status: McpStatus; token: string }>
+    logs: (options?: { page?: number; pageSize?: number; onlyErrors?: boolean }) => Promise<McpLogPage>
+    clearLogs: () => Promise<void>
+    snippets: () => Promise<McpConfigSnippet[]>
   }
   /** 桌面版可用：自绘窗口控制（最小化/最大化/关闭）；Web 版未实现 */
   window?: {

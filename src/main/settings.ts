@@ -4,7 +4,8 @@ import { randomBytes } from 'node:crypto'
 import { safeStorage } from 'electron'
 import { DEFAULT_MODEL } from '@shared/image-options'
 import { DEFAULT_PROMPT_MODEL } from '@shared/prompt-options'
-import type { ProviderSettings, ProviderSettingsUpdate } from '@shared/types'
+import type { McpSettings, ProviderSettings, ProviderSettingsUpdate } from '@shared/types'
+import { generateMcpToken, isValidMcpPort, normalizeMcpSettings } from './mcp/config'
 
 type SettingsFile = {
   baseURL: string
@@ -14,6 +15,7 @@ type SettingsFile = {
   plainApiKey?: string
   insecureStorage?: boolean
   imagesRoot?: string
+  mcp?: Partial<McpSettings>
 }
 
 const defaultSettings: SettingsFile = {
@@ -54,6 +56,45 @@ export class SettingsStore {
       return safeStorage.decryptString(Buffer.from(settings.encryptedApiKey, 'base64'))
     }
     return settings.plainApiKey || null
+  }
+
+  /**
+   * 读取 MCP 配置。token 为空时首次读取即生成并落盘：
+   * 让「打开开关 → 复制配置」这条路不需要用户手动填 token。
+   */
+  getMcpSettings(): McpSettings {
+    const settings = this.read()
+    const normalized = normalizeMcpSettings(settings.mcp)
+    if (normalized.token) return normalized
+
+    const token = generateMcpToken()
+    this.write({ ...settings, mcp: { ...normalized, token } })
+    return { ...normalized, token }
+  }
+
+  updateMcpSettings(patch: Partial<McpSettings>): McpSettings {
+    const settings = this.read()
+    const current = normalizeMcpSettings(settings.mcp)
+    const next: McpSettings = {
+      enabled: patch.enabled ?? current.enabled,
+      // 端口非法时保留原值并抛错，避免把服务配置写成不可启动的状态
+      port: current.port,
+      token: patch.token?.trim() || current.token || generateMcpToken()
+    }
+    if (patch.port !== undefined) {
+      if (!isValidMcpPort(patch.port)) {
+        throw new Error('端口必须是 1024–65535 之间的整数。')
+      }
+      next.port = patch.port
+    }
+    this.write({ ...settings, mcp: next })
+    return next
+  }
+
+  rotateMcpToken(): { settings: McpSettings; token: string } {
+    const token = generateMcpToken()
+    const next = this.updateMcpSettings({ token })
+    return { settings: next, token }
   }
 
   update(input: ProviderSettingsUpdate): ProviderSettings {

@@ -69,6 +69,16 @@ const api: PictVerseAPI = {
     openPath: (filePath: string) => ipcRenderer.invoke('shell:open-path', filePath),
     openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url)
   },
+  mcp: {
+    status: () => ipcRenderer.invoke('mcp:status'),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('mcp:set-enabled', enabled),
+    setPort: (port: number) => ipcRenderer.invoke('mcp:set-port', port),
+    revealToken: () => ipcRenderer.invoke('mcp:reveal-token'),
+    rotateToken: () => ipcRenderer.invoke('mcp:rotate-token'),
+    logs: (options?: { page?: number; pageSize?: number; onlyErrors?: boolean }) => ipcRenderer.invoke('mcp:logs', options),
+    clearLogs: () => ipcRenderer.invoke('mcp:clear-logs'),
+    snippets: () => ipcRenderer.invoke('mcp:snippets')
+  },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:maximize-toggle'),

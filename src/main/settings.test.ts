@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { SettingsStore } from './settings'
+import { DEFAULT_MCP_PORT } from './mcp/config'
 
 vi.mock('electron', () => ({
   safeStorage: {
@@ -83,6 +84,47 @@ describe('imagesRoot setting', () => {
     const settings = store.update({ imagesRoot: '' })
     expect(settings.imagesRoot).toBe('')
     expect(settings.imagesRootEffective).toBe(store.getDefaultImagesRoot())
+  })
+})
+
+describe('MCP 配置持久化', () => {
+  it('配置文件缺 mcp 段时回退为「关闭 + 默认端口」', () => {
+    const store = createStore()
+    const mcp = store.getMcpSettings()
+
+    expect(mcp.enabled).toBe(false)
+    expect(mcp.port).toBe(DEFAULT_MCP_PORT)
+  })
+
+  it('首次读取即生成 32 字节 hex token 并落盘', () => {
+    const store = createStore()
+    const first = store.getMcpSettings()
+
+    expect(first.token).toMatch(/^[0-9a-f]{64}$/)
+    const persisted = readJsonConfig(store).mcp as { token?: string }
+    expect(persisted.token).toBe(first.token)
+    // 再次读取必须是同一个 token，不能每次换新
+    expect(store.getMcpSettings().token).toBe(first.token)
+  })
+
+  it('轮换 token 后旧值失效并写入文件', () => {
+    const store = createStore()
+    const before = store.getMcpSettings().token
+    const { token } = store.rotateMcpToken()
+
+    expect(token).not.toBe(before)
+    expect(store.getMcpSettings().token).toBe(token)
+    expect((readJsonConfig(store).mcp as { token?: string }).token).toBe(token)
+  })
+
+  it('开关与端口可更新，非法端口被拒绝且不写坏配置', () => {
+    const store = createStore()
+    store.updateMcpSettings({ enabled: true, port: 51234 })
+
+    expect(store.getMcpSettings()).toMatchObject({ enabled: true, port: 51234 })
+    expect(() => store.updateMcpSettings({ port: 80 })).toThrow('1024')
+    // 拒绝之后原值保持不变
+    expect(store.getMcpSettings().port).toBe(51234)
   })
 })
 
